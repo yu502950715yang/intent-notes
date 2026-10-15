@@ -1,0 +1,20 @@
+{
+  "name": "intent-notes",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "让 AI 在 polyrepo 交付项目里持续留下决策笔记的 Agent Skill 包",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "node --test \"tests/*.spec.ts\"",
+    "typecheck": "tsc --noEmit",
+    "verify": "node skills/intent-notes/scripts/verify-note-tree.ts && node skills/intent-notes/scripts/verify-note-format.ts && node skills/intent-notes/scripts/verify-note-anchors.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^7.0.2"
+  }
+}

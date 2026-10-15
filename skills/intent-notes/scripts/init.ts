@@ -1,0 +1,103 @@
+/**
+ * 在目标项目建立 Agent Notes 骨架（存量项目初始化阶段 1）。
+ *
+ * 探测与渲染的逻辑在 init-core.ts；本文件是**纯 CLI**、不导出任何东西，
+ * 因此不需要 `import.meta.url === argv[1]` 入口守卫——那个守卫在脚本路径经
+ * symlink/junction 到达时会 fail-open，整段 CLI 被跳过、骨架静默不落盘。
+ *
+ * 用法：node scripts/init.ts <项目根> [--dry-run]
+ *
+ * 只做机械动作，不含任何判断：探测子仓库、根目录 git init（若尚未）、
+ * 建目录、写 .gitignore 片段与 .agents/intent-notes/config.yml。
+ * 不提交、不修改任何既有文件的内容（.gitignore 仅追加缺失段）。
+ */
+import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { AGENT_NOTE_CLASSES, AGENT_NOTE_LIFECYCLES, ARCHIVE_DIR } from './note-tree.ts'
+import { MARKER, detectSubRepos, renderConfig, renderGitignore } from './init-core.ts'
+
+const args = process.argv.slice(2)
+const dryRun = args.includes('--dry-run')
+const target = args.find(a => a !== '--dry-run')
+// 少敲一个参数不能变成「对当前目录动工」
+if (target === undefined) {
+  console.error('用法：node scripts/init.ts <项目根> [--dry-run]')
+  process.exit(1)
+}
+const projectRoot = resolve(target)
+
+if (!existsSync(projectRoot)) {
+  console.error(`init: 项目根不存在：${projectRoot}`)
+  process.exit(1)
+}
+
+const subRepos = detectSubRepos(projectRoot)
+const project = projectRoot.split(/[\\/]/).filter(Boolean).pop() ?? 'project'
+
+// 本 skill 基目录：只用于读自带模板，不代表它该放在哪（放哪由 harness 的扫描根决定）
+const skillDir = dirname(import.meta.dirname)
+// 模板缺失说明 skill 没整目录复制；静默跳过会让 notes/README.md 缺失、子仓库指针悬空
+const readmeTemplate = join(skillDir, 'templates', 'notes-readme.md')
+if (!existsSync(readmeTemplate)) {
+  console.error(`init: 缺少模板 ${readmeTemplate}（skill 需整目录复制）`)
+  process.exit(1)
+}
+
+const configPath = join(projectRoot, '.agents', 'intent-notes', 'config.yml')
+const gitignorePath = join(projectRoot, '.gitignore')
+const existingGitignore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : ''
+// config 已存在就跳过：bootstrap 把「更深层子仓库」解法定为人工往 repos 补条目，
+// 覆盖会静默抹掉那些条目，相关笔记随即回到「未在项目声明中」
+const configExists = existsSync(configPath)
+const needsRootGit = !existsSync(join(projectRoot, '.git'))
+const needsGitignore = !existingGitignore.includes(MARKER)
+
+const actions: string[] = []
+actions.push(`项目根：${projectRoot}`)
+actions.push(`探测到 ${subRepos.length} 个子仓库：${subRepos.join(', ') || '（无，可能是单仓库项目）'}`)
+actions.push(needsRootGit ? '项目根将 git init' : '项目根已是 git 仓库，跳过 init')
+actions.push(`将确保 ${AGENT_NOTE_LIFECYCLES.length + 1} 个生命周期 × ${AGENT_NOTE_CLASSES.length} 个分类目录存在`)
+actions.push(configExists
+  ? '`.agents/intent-notes/config.yml` 已存在，跳过（手工补过 repos 条目的项目尤其不要覆盖）'
+  : '将写入 `.agents/intent-notes/config.yml`')
+const readmeExists = existsSync(join(projectRoot, '.agents', 'notes', 'README.md'))
+actions.push(readmeExists
+  ? '`.agents/notes/README.md` 已存在，跳过'
+  : '将写入 `.agents/notes/README.md`')
+actions.push(needsGitignore ? `将追加 .gitignore 片段（标记：${MARKER}）` : '.gitignore 已含 Intent Notes 段，跳过')
+
+// 写入前如实打印计划：dry-run 与真实执行走同一份清单
+console.log(dryRun ? 'init --dry-run，未做任何改动：' : 'init: 将执行以下动作：')
+for (const a of actions) console.log(`  ${a}`)
+if (dryRun) process.exit(0)
+
+if (needsRootGit) {
+  const r = spawnSync('git', ['init', '-q'], { cwd: projectRoot, encoding: 'utf8' })
+  if (r.status !== 0) {
+    console.error(`init: git init 失败：${r.stderr}`)
+    process.exit(1)
+  }
+}
+
+for (const lifecycle of [...AGENT_NOTE_LIFECYCLES, ARCHIVE_DIR]) {
+  for (const cls of AGENT_NOTE_CLASSES) {
+    mkdirSync(join(projectRoot, '.agents', 'notes', lifecycle, cls), { recursive: true })
+  }
+}
+
+mkdirSync(join(projectRoot, '.agents', 'intent-notes'), { recursive: true })
+if (!configExists) writeFileSync(configPath, renderConfig(project, subRepos), 'utf8')
+
+// 子仓库 AGENT.md 里的指针会引用这个文件，必须真的创建它，否则指针悬空。
+// 已存在则跳过：文件头承诺「不修改任何既有文件的内容」，人工改过的说明不该被模板覆盖
+if (!readmeExists) {
+  writeFileSync(join(projectRoot, '.agents', 'notes', 'README.md'), readFileSync(readmeTemplate, 'utf8'), 'utf8')
+}
+
+if (needsGitignore) {
+  appendFileSync(gitignorePath, `${existingGitignore === '' || existingGitignore.endsWith('\n') ? '' : '\n'}${renderGitignore(subRepos)}`, 'utf8')
+}
+
+console.log('init: 骨架已建立。')
+console.log('下一步：按 references/bootstrap-existing-project.md 的阶段 2 重建项目 AGENTS.md。')
