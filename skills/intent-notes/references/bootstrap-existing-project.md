@@ -68,7 +68,7 @@ node "<skill-dir>/scripts/init.ts" "<项目根>"
 
 目标不是代码仓库，而是需求 / PRD / 资料文件夹时，流程按 `references/plain-directory-mode.md` 走。与上面四个阶段的差别：
 
-- **阶段 1**：同一个 `init`，但由 agent 代劳 git（`init` 会 `git init`）；目录必须在**本地磁盘**
+- **阶段 1**：同一个 `init`，但由 agent 代劳版本控制（`init` 会 `git init`）；目录必须在**本地磁盘**
 - **阶段 2**：**不需要**给子仓库铺指针（没有子仓库），只需写工作目录自己的 `AGENTS.md`
 - **阶段 3**：**不适用**——没有 commit 历史可收割，从今天开始记
 - **前提**：那台机器有 git。没有时**不要自行安装**，报告后由人决定

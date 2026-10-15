@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 让非代码的工作目录（需求 / PRD 文件夹）能用 intent-notes 留决策笔记——零程序改动，由 agent 代劳 git。
+**Goal:** 让非代码的工作目录（需求 / PRD 文件夹）能用 intent-notes 留决策笔记——零程序改动，由 agent 代劳版本控制。
 
 **Architecture:** 复用现有 git 锚点链路：`init` 在目标目录建 git 仓库，agent 提交产物后写笔记，锚点是 commit，门禁 3 实时校验。只改契约文档（`SKILL.md` / 新增一份 reference / `bootstrap-existing-project.md` / `notes-readme.md` 模板 / `README.md`）与一处测试齐备性清单。
 
@@ -272,7 +272,7 @@ git commit -m "docs: 新增非代码工作目录的操作说明"
 
 目标不是代码仓库，而是需求 / PRD / 资料文件夹时，流程按 `references/plain-directory-mode.md` 走。与上面四个阶段的差别：
 
-- **阶段 1**：同一个 `init`，但由 agent 代劳 git（`init` 会 `git init`）；目录必须在**本地磁盘**
+- **阶段 1**：同一个 `init`，但由 agent 代劳版本控制（`init` 会 `git init`）；目录必须在**本地磁盘**
 - **阶段 2**：**不需要**给子仓库铺指针（没有子仓库），只需写工作目录自己的 `AGENTS.md`
 - **阶段 3**：**不适用**——没有 commit 历史可收割，从今天开始记
 - **前提**：那台机器有 git。没有时**不要自行安装**，报告后由人决定

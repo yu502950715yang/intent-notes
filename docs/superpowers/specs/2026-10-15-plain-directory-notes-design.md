@@ -58,7 +58,7 @@ git 不可用时：**不要下载或安装任何软件**。停止初始化，如
 | # | 文件 | 改什么 |
 |---|---|---|
 | 1 | `skills/intent-notes/SKILL.md` | description 扩展；新增「第 0 节」；硬规则 6 补两次提交；第五节加一行 |
-| 2 | `skills/intent-notes/references/plain-directory-mode.md` | **新增**：agent 代劳 git 的完整流程 |
+| 2 | `skills/intent-notes/references/plain-directory-mode.md` | **新增**：agent 代劳版本控制的完整流程 |
 | 3 | `skills/intent-notes/references/bootstrap-existing-project.md` | 加一节「非代码工作目录」 |
 | 4 | `skills/intent-notes/templates/notes-readme.md` | 补一句形态说明 |
 | 5 | `README.md` | 使用形态、已知限制、references 数量（6 → 7） |
@@ -134,7 +134,7 @@ git 不可用时：**不要下载或安装任何软件**。停止初始化，如
 
 - `config.yml` 支持 `dirs:` 段（与 `repos:` 并存，**不引入全局 `mode` 开关**，避免「模式与内容不一致」这一新的 fail-closed 漏洞面）
 - 笔记段名 `## 涉及范围`，门禁 3 **同时接受** `## 涉及仓库`（现有笔记零回归）；两者同时出现判红
-- 文件锚点行：`- \`prd\` 文件 \`需求/登录改版.md\` @ \`sha256:<64 位 hex>\``；**哈希必填**
+- 文件锚点行：`` - `prd` 文件 `需求/登录改版.md` @ `sha256:<64 位 hex>` ``；**哈希必填**
 - 为何哈希必填：无 git 时内容被就地覆盖，V1 只存在于笔记里；只校验文件存在会让「第二版需求」静默通过，而门禁查不了「该写却没写」。哈希是让「需求变过」被机器发现的唯一信号
 - 红之后的动作是**三选一**：措辞变更 → 更新哈希；事实变更 → 就地改笔记；方向翻转 → 新开一篇并互链（对应现有硬规则）
 - `init` 新增 `--no-git`：不 `git init`、不探测子仓库、不写 `.gitignore`，改写 `dirs:`；默认行为一个字节不改
