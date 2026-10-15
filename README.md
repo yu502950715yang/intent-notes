@@ -190,7 +190,7 @@ intent-notes/
 │   ├── references/  (7)     # 格式细则、六分类判据、何时写、归档、自检、存量初始化、非代码工作目录
 │   ├── templates/   (5)     # 四种生命周期的填空模板 + notes/README.md 模板
 │   └── scripts/     (10)    # 三道门禁 + init + backfill + 5 个纯模块
-├── tests/                   # 8 个 spec（100 用例）
+├── tests/                   # 8 个 spec（101 用例）
 ├── docs/superpowers/        # 历史 spec / plan（写于旧名 EvolveTrace 时，保留不改）
 ├── .superpowers/            # 开发账本（gitignored）
 └── package.json  tsconfig.json  README.md  .gitignore  .gitattributes
@@ -226,7 +226,7 @@ intent-notes/
 
 ```powershell
 npm install          # 仅开发需要：typescript + @types/node
-npm test             # node --test "tests/*.spec.ts" → 100 用例
+npm test             # node --test "tests/*.spec.ts" → 101 用例
 npm run typecheck    # tsc --noEmit（strict，18 个文件）
 ```
 
