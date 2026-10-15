@@ -10,7 +10,8 @@ import { parseRepoList } from '../skills/intent-notes/scripts/note-anchors.ts'
 const skillRoot = resolve(import.meta.dirname, '../skills/intent-notes')
 
 function git(cwd: string, ...args: string[]): void {
-  const r = spawnSync('git', args, { cwd, encoding: 'utf8' })
+  // -c 覆盖全局 git 配置：gpgsign 会让 commit 失败，core.abbrev 会让 --short 不足 7 位而锚点门禁判红
+  const r = spawnSync('git', ['-c', 'commit.gpgsign=false', '-c', 'core.abbrev=40', ...args], { cwd, encoding: 'utf8' })
   assert.equal(r.status, 0, r.stderr)
 }
 
@@ -208,6 +209,55 @@ test('经 junction 调用 init 不得静默不落盘', () => {
   }
 })
 
+test('项目内的 .agents/notes 是 junction 时 fail-closed，不把骨架写到项目外', () => {
+  // 用户为省盘或共享常把 .agents/notes 做成 junction；不检查就会把整份骨架写进外部目录
+  // （目标是同步盘时还违反 references/plain-directory-mode.md 的「本地磁盘」约定），且全程零告警
+  const base = mkdtempSync(join(tmpdir(), 'intent-notes-init-link-'))
+  const root = join(base, 'proj')
+  const external = join(base, 'external')
+  mkdirSync(join(root, '.agents'), { recursive: true })
+  mkdirSync(external, { recursive: true })
+  symlinkSync(external, join(root, '.agents', 'notes'), 'junction')
+
+  const r = spawnSync('node', ['skills/intent-notes/scripts/init.ts', root], { encoding: 'utf8' })
+  assert.notEqual(r.status, 0, '骨架被写进了 junction 指向的外部目录')
+  assert.match(r.stderr, /符号链接|junction/, `未点明是链接：${r.stderr}`)
+  assert.equal(readdirSync(external).length, 0, '外部目录被写入了骨架')
+  rmSync(base, { recursive: true, force: true })
+})
+
+test('目标位于上层 git 仓库内时 fail-closed，不制造嵌套仓库', () => {
+  // git 会向上寻找仓库。对 <repo>/docs/prd 这类子目录做 git init 会造出嵌套仓库：
+  // 上层仓库对内部改动视而不见（只看到 `?? docs/`），文档亦明令禁止这种形态。
+  const outer = mkdtempSync(join(tmpdir(), 'intent-notes-init-outer-'))
+  git(outer, 'init', '-q')
+  const inner = join(outer, 'docs', 'prd')
+  mkdirSync(inner, { recursive: true })
+
+  const r = spawnSync('node', ['skills/intent-notes/scripts/init.ts', inner], { encoding: 'utf8' })
+  assert.notEqual(r.status, 0, '在上层仓库内的子目录仍建了仓库')
+  assert.match(r.stderr, /已在 git 仓库/, `未点明上层仓库：${r.stderr}`)
+  assert.equal(existsSync(join(inner, '.git')), false, '嵌套仓库被创建了')
+  assert.equal(existsSync(join(inner, '.agents')), false, '拒绝后仍落了骨架')
+  rmSync(outer, { recursive: true, force: true })
+})
+
+test('.gitignore 只是「提到」标记不算已写过：排除规则必须真的追加', () => {
+  // includes(MARKER) 会被注释里的同名字符串骗到：规则一条没写就报「已含 Intent Notes 段」，
+  // 子仓库排除静默失效且退出码为 0。
+  const parent = mkdtempSync(join(tmpdir(), 'intent-notes-init-marker-'))
+  const root = join(parent, 'proj')
+  mkdirSync(root, { recursive: true })
+  writeFileSync(join(root, '.gitignore'), '# 与 # --- Intent Notes --- 那套约定无关\n*.log\n')
+
+  const r = spawnSync('node', ['skills/intent-notes/scripts/init.ts', root], { encoding: 'utf8' })
+  assert.equal(r.status, 0, r.stderr)
+  const after = readFileSync(join(root, '.gitignore'), 'utf8')
+  assert.match(after, /^# --- Intent Notes ---$/m, '标记只在注释里被提及，却被判为已写过')
+  assert.match(after, /\*\.log/, '既有内容被破坏')
+  rmSync(parent, { recursive: true, force: true })
+})
+
 test('部署目录自包含：无 spec、无开发配置', () => {
   const { base } = makeJunctionDeploy()
   try {
@@ -222,5 +272,27 @@ test('部署目录自包含：无 spec、无开发配置', () => {
     }
   } finally {
     rmSync(base, { recursive: true, force: true })
+  }
+})
+
+test('重复运行 init 幂等：既有文件字节不变、.gitignore 不重复追加', () => {
+  // 文件头承诺「不修改任何既有文件的内容」；bootstrap 阶段人工补过 repos 条目，
+  // 第二次运行若覆盖就静默抹掉它们，相关笔记随即回到「未在项目声明中」
+  const root = makePolyrepo()
+  try {
+    assert.equal(spawnSync('node', ['skills/intent-notes/scripts/init.ts', root], { encoding: 'utf8' }).status, 0)
+    const cfgPath = join(root, '.agents', 'intent-notes', 'config.yml')
+    const giPath = join(root, '.gitignore')
+    const manual = readFileSync(cfgPath, 'utf8').replace('    name: cloud', '    name: cloud\n    # 人工补充说明')
+    writeFileSync(cfgPath, manual)
+    const giBefore = readFileSync(giPath, 'utf8')
+
+    const second = spawnSync('node', ['skills/intent-notes/scripts/init.ts', root], { encoding: 'utf8' })
+    assert.equal(second.status, 0, second.stderr)
+    assert.equal(readFileSync(cfgPath, 'utf8'), manual, 'config.yml 被第二次运行覆盖了')
+    assert.equal(readFileSync(giPath, 'utf8'), giBefore, '.gitignore 被重复追加了')
+    assert.match(second.stdout, /已存在，跳过/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
   }
 })

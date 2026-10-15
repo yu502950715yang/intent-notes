@@ -9,7 +9,8 @@ import { parseAnchors, parseRepoList, parseRepoListChecked, checkRepoRoots, veri
 const skillRoot = resolve(import.meta.dirname, '../skills/intent-notes')
 
 function git(cwd: string, ...args: string[]): string {
-  const r = spawnSync('git', args, { cwd, encoding: 'utf8' })
+  // -c 覆盖全局 git 配置：gpgsign 会让 commit 失败，core.abbrev 会让 --short 不足 7 位而锚点门禁判红
+  const r = spawnSync('git', ['-c', 'commit.gpgsign=false', '-c', 'core.abbrev=40', ...args], { cwd, encoding: 'utf8' })
   assert.equal(r.status, 0, `git ${args.join(' ')} 失败：${r.stderr}`)
   return r.stdout.trim()
 }
@@ -395,5 +396,82 @@ test('config 里仓库名重复时门禁 3 报配置错', () => {
     assert.match(stderr, /重复/)
   } finally {
     rmSync(repo.path, { recursive: true, force: true })
+  }
+})
+
+test('parseRepoList：repos 段内的顶格注释不得截断后续条目', () => {
+  // 顶格 `#` 是合法 YAML。旧写法把「非空白开头」一律当成下一个顶层键并 break，
+  // 注释之后的仓库条目被静默丢弃：声明它的笔记误报「未在项目声明中」，
+  // 而本该涉及它却写「不涉及」的笔记永远查不出来。
+  const config = [
+    'repos:',
+    '  - name: a',
+    '    path: .',
+    '# 下面这个注释顶格，是合法 YAML',
+    '  - name: b',
+    '    path: ./b',
+  ].join('\n')
+  const { repos, errors } = parseRepoListChecked(config)
+  assert.deepEqual([...repos.entries()], [['a', '.'], ['b', './b']], `条目被注释截断了：${JSON.stringify([...repos])}`)
+  assert.deepEqual(errors, [])
+})
+
+test('parseRepoList：repos 段内的缩进注释不改变解析结果', () => {
+  const config = [
+    'repos:',
+    '  # 缩进注释',
+    '  - name: a',
+    '    path: .',
+    '    # 条目内注释',
+    '  - name: b',
+    '    path: ./b',
+    'sources:',
+    '  - docs',
+  ].join('\n')
+  const { repos, errors } = parseRepoListChecked(config)
+  assert.deepEqual([...repos.entries()], [['a', '.'], ['b', './b']])
+  assert.deepEqual(errors, [])
+})
+
+test('分支与 commit 只存在于 origin/* 时锚点仍然有效', () => {
+  // 本地 checkout 通常没有其他分支的本地 ref：只查 refs/heads/ 会把团队的 feature 分支判为不存在
+  const bare = mkdtempSync(join(tmpdir(), 'intent-notes-bare-'))
+  const work = mkdtempSync(join(tmpdir(), 'intent-notes-work-'))
+  const parent = mkdtempSync(join(tmpdir(), 'intent-notes-cloneparent-'))
+  const clone = join(parent, 'work')
+  try {
+    git(bare, 'init', '-q', '--bare', '-b', 'main')
+    git(work, 'init', '-q', '-b', 'main')
+    git(work, 'config', 'user.email', 't@example.com')
+    git(work, 'config', 'user.name', 't')
+    writeFileSync(join(work, 'a.txt'), 'x\n')
+    git(work, 'add', '.')
+    git(work, 'commit', '-q', '-m', 'v140: 初始')
+    git(work, 'remote', 'add', 'origin', bare)
+    git(work, 'push', '-q', 'origin', 'main')
+    git(work, 'checkout', '-q', '-b', 'feature/x')
+    writeFileSync(join(work, 'b.txt'), 'y\n')
+    git(work, 'add', '.')
+    git(work, 'commit', '-q', '-m', 'v140: feature')
+    git(work, 'push', '-q', 'origin', 'feature/x')
+    const sha = git(work, 'rev-parse', 'HEAD')
+
+    git(parent, 'clone', '-q', bare, clone)
+    const localHead = spawnSync('git', ['show-ref', '--verify', '--quiet', 'refs/heads/feature/x'], { cwd: clone })
+    assert.notEqual(localHead.status, 0, '克隆里竟有本地 feature/x，这一用例测不到远程兜底')
+
+    const note = [
+      '# Agent Note: t', '', 'Status: implemented', '', '## Problem', '', 'p',
+      '', '## Decision', '', 'd',
+      '', '## 涉及仓库', '', `- \`self\` 分支 \`feature/x\` commits \`${sha}\``,
+      '', '## Alternatives considered', '', '- a',
+      '', '## Consequences', '', 'c', '',
+    ].join('\n')
+    const out = verifyAnchors('implemented/feature/2026-01-01-a.md', note, new Map([['self', clone]]))
+    assert.deepEqual(out, [], `远程分支锚点被判无效：${out.join(' | ')}`)
+  } finally {
+    rmSync(bare, { recursive: true, force: true })
+    rmSync(work, { recursive: true, force: true })
+    rmSync(parent, { recursive: true, force: true })
   }
 })

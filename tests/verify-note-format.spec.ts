@@ -19,9 +19,9 @@ function scaffold(notes: Record<string, string>): string {
   return root
 }
 
-function runFormatGate(root: string): { code: number; stderr: string } {
+function runFormatGate(root: string): { code: number; stdout: string; stderr: string } {
   const r = spawnSync('node', ['skills/intent-notes/scripts/verify-note-format.ts', root], { encoding: 'utf8' })
-  return { code: r.status ?? -1, stderr: r.stderr }
+  return { code: r.status ?? -1, stdout: r.stdout ?? '', stderr: r.stderr }
 }
 
 const GOOD_IMPLEMENTED = `# Agent Note: 示例决策
@@ -203,5 +203,135 @@ test('经 junction 调用门禁 2 不得静默放绿', () => {
     }
   } finally {
     rmSync(base, { recursive: true, force: true })
+  }
+})
+
+test('带 UTF-8 BOM 的合法笔记通过', () => {
+  // Windows 的编辑器与重定向常写 BOM；不剥会让第 1 行判定恒失败，而报错完全不提 BOM
+  const root = scaffold({ 'implemented/architecture/2026-01-01-bom.md': `\uFEFF${GOOD_IMPLEMENTED}` })
+  try {
+    const { code, stderr } = runFormatGate(root)
+    assert.equal(code, 0, `BOM 让合法笔记被误判：${stderr}`)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('正文残留未替换的 {{...}} 占位判红', () => {
+  const root = scaffold({
+    'implemented/architecture/2026-01-01-t.md': GOOD_IMPLEMENTED.replace('现在时描述已落地事实。', '{{现在时描述已落地事实。}}'),
+  })
+  try {
+    const { code, stderr } = runFormatGate(root)
+    assert.equal(code, 1, '未替换的模板占位被放过了：正文可以是一堆 {{...}} 而门禁全绿')
+    assert.match(stderr, /模板占位/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('围栏里的 {{...}} 示例不算未替换占位', () => {
+  // 记录模板语法的笔记会在代码块里写占位示例；只有围栏外的才是真占位
+  const body = GOOD_IMPLEMENTED.replace(
+    '现在时描述已落地事实。',
+    ['模板长这样：', '', '```md', '## Decision', '', '{{现在时描述已落地事实。}}', '```'].join('\n'),
+  )
+  const root = scaffold({ 'implemented/architecture/2026-01-01-t.md': body })
+  try {
+    assert.equal(runFormatGate(root).code, 0)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('二级标题允许 CommonMark 的 ≤3 空格缩进（与门禁 3 同口径）', () => {
+  const indented = GOOD_IMPLEMENTED.replace(/^## /gm, ' ## ')
+  const root = scaffold({ 'implemented/architecture/2026-01-01-ind.md': indented })
+  try {
+    const { code, stderr } = runFormatGate(root)
+    assert.equal(code, 0, `缩进的二级标题被误判（同一写法门禁 3 认）：${stderr}`)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('0 篇笔记时退 0，但摘要不自称「格式全部合规」', () => {
+  // 根路径写错与 init 刚建完的空骨架都退 0：摘要必须让两者可分辨（与门禁 1 同口径）
+  const root = scaffold({})
+  try {
+    const { code, stdout } = runFormatGate(root)
+    assert.equal(code, 0)
+    assert.doesNotMatch(stdout, /全部合规/)
+    assert.match(stdout, /未发现任何笔记/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('rejected 的状态行必须是 em dash + 原因', () => {
+  const rejected = (status: string): string =>
+    ['# Agent Note: t', '', status, '', '## Problem', '', 'p', '', '## Proposal', '', '拟议内容', '', '## Alternatives considered', '', '- a'].join('\n')
+  const bad = scaffold({ 'rejected/feature/2026-01-01-a.md': rejected('Status: rejected - 全角连字符') })
+  const good = scaffold({ 'rejected/feature/2026-01-01-a.md': rejected('Status: rejected — 改用方案 B') })
+  try {
+    assert.equal(runFormatGate(good).code, 0)
+    assert.equal(runFormatGate(bad).code, 1)
+  } finally {
+    rmSync(bad, { recursive: true, force: true })
+    rmSync(good, { recursive: true, force: true })
+  }
+})
+
+test('proposed 缺必备节判红', () => {
+  const proposed = ['# Agent Note: t', '', 'Status: proposed', '', '## Problem', '', 'p', '', '## Alternatives considered', '', '- a'].join('\n')
+  const root = scaffold({ 'proposed/feature/2026-01-01-a.md': proposed })
+  try {
+    const { code, stderr } = runFormatGate(root)
+    assert.equal(code, 1)
+    assert.match(stderr, /## Proposal/)
+    assert.match(stderr, /## Acceptance criteria/)
+    assert.match(stderr, /## Risks/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('非归档笔记的第 4 行必须为空', () => {
+  const body = GOOD_IMPLEMENTED.replace('Status: implemented\n', 'Status: implemented\nArchived: 2026-01-02\n')
+  const root = scaffold({ 'implemented/architecture/2026-01-01-a.md': body })
+  try {
+    const { code, stderr } = runFormatGate(root)
+    assert.equal(code, 1)
+    assert.match(stderr, /line 4 must be blank/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('archived 笔记出现提案用语判红', () => {
+  const body = GOOD_ARCHIVED.replace('## Decision', '## Proposal')
+  const root = scaffold({ 'archived/architecture/2026-01-01-a.md': body })
+  try {
+    const { code, stderr } = runFormatGate(root)
+    assert.equal(code, 1)
+    assert.match(stderr, /proposal-era heading/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('存量收割可用 not-recorded 标记替代 Alternatives 节，但两者不能并存', () => {
+  const marked = GOOD_IMPLEMENTED.replace('## Alternatives considered', '<!-- alternatives: not-recorded -->')
+  const both = `${marked}\n## Alternatives considered\n\n- a\n`
+  const okRoot = scaffold({ 'implemented/architecture/2026-01-01-a.md': marked })
+  const badRoot = scaffold({ 'implemented/architecture/2026-01-01-a.md': both })
+  try {
+    assert.equal(runFormatGate(okRoot).code, 0)
+    const { code, stderr } = runFormatGate(badRoot)
+    assert.equal(code, 1)
+    assert.match(stderr, /not-recorded/)
+  } finally {
+    rmSync(okRoot, { recursive: true, force: true })
+    rmSync(badRoot, { recursive: true, force: true })
   }
 })

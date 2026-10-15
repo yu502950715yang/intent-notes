@@ -348,3 +348,83 @@ test('CLI：缺参数与缺 config 都 exit 1', () => {
   assert.match(noCfg.stderr ?? '', /config\.yml 不存在/)
   rmSync(empty, { recursive: true, force: true })
 })
+
+test('非 ASCII 文件名不被 git 八进制转义：写进笔记的必须是真实路径', () => {
+  // core.quotepath 默认开启时 git 输出 `"\344\270\255\346\226\207.txt"`。AI 照抄进笔记就是
+  // 假路径（grep/定位全失效），basename 启发式也永远匹配不上旧笔记，反而诱导新建重复笔记。
+  const path = mkdtempSync(join(tmpdir(), 'intent-notes-bf-nonascii-'))
+  git(path, 'init', '-q', '-b', 'main')
+  git(path, 'config', 'user.email', 't@example.com')
+  git(path, 'config', 'user.name', 't')
+  writeFileSync(join(path, '中文文件.txt'), 'x\n')
+  git(path, 'add', '.')
+  git(path, 'commit', '-q', '-m', 'feat: 中文文件名')
+
+  const ctx = collectCommitContext('cloud', path, 'HEAD')
+  assert.deepEqual(ctx.files, ['中文文件.txt'], `路径被 git 转义了：${JSON.stringify(ctx.files)}`)
+  rmSync(path, { recursive: true, force: true })
+})
+
+test('CLI：repos 条目不是独立仓库根时 exit 1，不得把上层仓库的 commit 记成子仓库', () => {
+  // git 会向上寻找仓库：path 只是上层仓库里的普通目录时，cat-file 探测会命中上层仓库，
+  // 渲染出的锚点行把外层 commit 记在子仓库名下——错锚点会被 AI 贴进永久笔记。
+  const root = mkdtempSync(join(tmpdir(), 'intent-notes-bf-notroot-'))
+  git(root, 'init', '-q', '-b', 'main')
+  git(root, 'config', 'user.email', 't@example.com')
+  git(root, 'config', 'user.name', 't')
+  mkdirSync(join(root, 'inner'), { recursive: true })
+  writeFileSync(join(root, 'inner', 'x.txt'), 'x\n')
+  git(root, 'add', '.')
+  git(root, 'commit', '-q', '-m', 'x')
+  const sha = git(root, 'rev-parse', 'HEAD')
+
+  mkdirSync(join(root, '.agents', 'intent-notes'), { recursive: true })
+  writeFileSync(
+    join(root, '.agents', 'intent-notes', 'config.yml'),
+    'project: demo\nrepos:\n  - path: inner\n    name: inner\n  - path: .\n    name: outer\n',
+  )
+
+  const r = spawnSync('node', ['skills/intent-notes/scripts/backfill.ts', sha, root], { encoding: 'utf8' })
+  assert.equal(r.status, 1, `上层仓库的 commit 被当成了 inner 的提交：${r.stdout}`)
+  assert.match(r.stderr, /不是独立仓库根/, `未按仓库根预检报错：${r.stderr}`)
+  assert.doesNotMatch(r.stdout, /- `inner` 分支/)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('renderBackfill 自带用法指引：片段不得整段粘贴', () => {
+  // 片段里有自己的 `## 涉及仓库` 段头；整体粘进笔记会造出第二个段头，门禁 3 判「重复段」
+  const ctx = { repo: 'cloud', sha: 'abc1234', subject: 'x', branches: ['v140'], files: ['a.txt'] }
+  const md = renderBackfill(ctx, [])
+  assert.match(md, /不要整段粘贴/, `缺少用法指引：${md}`)
+})
+
+test('无分支路径的片段同样带用法指引', () => {
+  const ctx = { repo: 'cloud', sha: 'abc1234', subject: 'x', branches: [], files: ['a.txt'] }
+  assert.match(renderBackfill(ctx, []), /不要整段粘贴/)
+})
+
+test('按指引只搬锚点行时，片段能过门禁 3（端到端）', () => {
+  const { root, sha } = makeBackfillProject('intent-notes-bf-paste-')
+  try {
+    const r = spawnSync('node', ['skills/intent-notes/scripts/backfill.ts', sha, root], { encoding: 'utf8' })
+    assert.equal(r.status, 0, r.stderr)
+    const anchorLine = r.stdout.split('\n').find(l => l.startsWith('- `cloud` 分支 '))
+    assert.ok(anchorLine !== undefined, `片段里没有锚点行：${r.stdout}`)
+
+    const dir = join(root, '.agents', 'notes', 'implemented', 'feature')
+    mkdirSync(dir, { recursive: true })
+    const note = [
+      '# Agent Note: t', '', 'Status: implemented', '', '## Problem', '', 'p',
+      '', '## Decision', '', 'd',
+      '', '## 涉及仓库', '', anchorLine,
+      '', '## Alternatives considered', '', '- a',
+      '', '## Consequences', '', 'c', '',
+    ].join('\n')
+    writeFileSync(join(dir, '2026-01-01-t.md'), note)
+
+    const gate = spawnSync('node', ['skills/intent-notes/scripts/verify-note-anchors.ts', root], { encoding: 'utf8' })
+    assert.equal(gate.status, 0, `只搬锚点行仍被判红：${gate.stderr}`)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})

@@ -7,7 +7,8 @@ import { spawnSync } from 'node:child_process'
 import { gitTracksFile } from '../skills/intent-notes/scripts/note-anchors.ts'
 
 function git(cwd: string, ...args: string[]): void {
-  const r = spawnSync('git', args, { cwd, encoding: 'utf8' })
+  // -c 覆盖全局 git 配置：gpgsign 会让 commit 失败，core.abbrev 会让 --short 不足 7 位而锚点门禁判红
+  const r = spawnSync('git', ['-c', 'commit.gpgsign=false', '-c', 'core.abbrev=40', ...args], { cwd, encoding: 'utf8' })
   assert.equal(r.status, 0, `git ${args.join(' ')} 失败：${r.stderr}`)
 }
 
