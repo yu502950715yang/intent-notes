@@ -1,3 +1,5 @@
+> 历史文档（写于项目名 EvolveTrace 时期）：其中的目录名、配置文件路径与命令为当时形态，已作废；现行形态以 `README.md` 与 `skills/intent-notes/` 为准。
+
 # EvolveTrace 设计规格：让 AI 在交付项目里留下决策笔记
 
 Status: proposed

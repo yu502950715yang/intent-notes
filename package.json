@@ -10,8 +10,7 @@
   },
   "scripts": {
     "test": "node --test \"tests/*.spec.ts\"",
-    "typecheck": "tsc --noEmit",
-    "verify": "node skills/intent-notes/scripts/verify-note-tree.ts && node skills/intent-notes/scripts/verify-note-format.ts && node skills/intent-notes/scripts/verify-note-anchors.ts"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

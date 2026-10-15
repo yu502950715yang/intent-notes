@@ -1,3 +1,5 @@
+> 短注：文中记载的「本机 pwsh / npm / git 无法执行」的环境阻碍现已消除（当前 130 个用例全绿）。
+
 # 非代码工作目录的决策笔记 实施计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

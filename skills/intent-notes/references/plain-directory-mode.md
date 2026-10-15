@@ -68,7 +68,15 @@ git -C "<工作目录>" commit -m "chore: 建立 Agent Notes 骨架"
    - 三个占位换真值：仓库名用工作目录名（即 `config.yml` 里 `path: .` 那条的 `name`），分支名用 `git branch --show-current` 的结果，短哈希用上一步 commit 的短哈希
 
    以 `templates/implemented.md` 起步时，模板里 ``- `{{不涉及的仓库名}}` 不涉及`` 那一行**若没有对应仓库就整行删掉**——留着会被门禁 3 报「仓库 `占位内容` 未在项目声明中」，而本形态的首篇笔记没有第二个仓库，必然命中。
-7. 提交笔记，**产物先提交、笔记后提交**（笔记的 commit 锚点只能指向已存在的 commit）：
+7. 跑**门禁 1、2**：本形态没有 CI、没有子仓库，这两条脚本是唯一的机检兜底——
+
+   ```bash
+   node "<skill-dir>/scripts/verify-note-tree.ts"   "<工作目录>/.agents/notes"   # 门禁 1：结构
+   node "<skill-dir>/scripts/verify-note-format.ts" "<工作目录>/.agents/notes"   # 门禁 2：格式
+   ```
+
+   参数语义：门禁 1 / 2 接 **notes 根**（`<工作目录>/.agents/notes`），门禁 3 接**项目根**（即 `SKILL.md` 第零节那条 `verify-note-anchors.ts`）。红了就地修完再提交笔记。
+8. 提交笔记，**产物先提交、笔记后提交**（笔记的 commit 锚点只能指向已存在的 commit）：
 
    ```bash
    git add ".agents/notes/{lifecycle}/{class}/<笔记文件名>"

@@ -46,7 +46,7 @@ DSH 的项目级 skill 扫描根是 `<项目根>/.agents/skills/`；换别的 ha
 | 建骨架：`.agents/notes/` 的四生命周期 × 六分类目录、`.agents/intent-notes/config.yml`、`.agents/notes/README.md`、`.gitignore` 片段 | 不用动手。已存在的 `config.yml` 与 `notes/README.md` **跳过不覆盖**，人工补过的内容不会被模板冲掉 |
 | 重建项目 `AGENTS.md`：读现有 `AGENTS.md` 与各仓库的 `AGENT.md`，提取**当前真正生效**的规矩，把漂移的仓库清单与磁盘对齐，每条挂链接 | **最关键的一步**——核对它列出的规矩确实是当前生效的 |
 | 给每个子仓库的 `AGENT.md` 追加一行指针 | 不用管。polyrepo 里 agent 常在子仓库里干活，那里读不到项目根的 `AGENTS.md`，所以指针必须逐仓库铺开 |
-| 抛出一份历史文档收割清单，逐份说明收还是不收 | **划掉不需要的**。预期产出远少于文档总数 |
+| 抛出一份历史文档收割清单（AI 按 `sources:` 列出的目录遍历筛选），逐份说明收还是不收 | **划掉不需要的**。预期产出远少于文档总数 |
 | 跑三道门禁并报告结果 | 空骨架时门禁 1 打印「未发现任何笔记，请确认根目录正确…」并**正常退 0**——0 篇不是违规 |
 | 请你确认首次提交 | 说「提交」就行 |
 
@@ -56,7 +56,7 @@ DSH 的项目级 skill 扫描根是 `<项目根>/.agents/skills/`；换别的 ha
 
 ### 人：正常提需求就行
 
-**不需要手动调用这个 skill。** 改动非平凡时 AI 会顺手写一篇笔记；你要做的事只有确认和兜底：
+**不需要手动调用这个 skill。** 改动命中下一节那份清单时 AI 会顺手写一篇笔记；你要做的事只有确认和兜底：
 
 | 你想做的 | 怎么做 |
 |---|---|
@@ -123,7 +123,7 @@ Status: implemented
 
 | 维度 | 取值 |
 |---|---|
-| 生命周期 | `proposed`（待评审）→ `implemented`（已交付，与代码同步）→ `rejected`（被否决）/ `archived`（冻结的历史） |
+| 生命周期 | 三对状态转换：`proposed`（待评审）→ `implemented`（已交付，与代码同步）、`proposed` → `rejected`（被否决）、`implemented` → `archived`（冻结的历史） |
 | 分类（闭集，不许自造） | `feature`、`bug-fix`、`simplification`、`architecture`、`process`、`testing` |
 | 文件名 | 日期是主题**首次提出日**；`topic-title` 是唯一的自由位：英文小写、连字符分词、2–7 词，写决策或机制名（`capability-seams`），不写动作与整句 |
 
@@ -131,7 +131,7 @@ Status: implemented
 
 - **目录即状态**：`Status:` 必须与所在目录一致。唯一例外是 `archived/`——它保持 `Status: implemented`，并在第 4 行写 `Archived: YYYY-MM-DD`
 - **`## Alternatives considered` 必写**：每个真考虑过的备选，先写它最强的理由，再写为什么不用；**没有过的选项不要编**（存量收割确实无记录时写 `<!-- alternatives: not-recorded -->`，与本节头不能同时出现）
-- **`## 涉及仓库` 缺失直接判红**：没有涉及仓库也要写一行 `不涉及`，不是省略本节
+- **`## 涉及仓库` 缺失直接判红**：没有涉及仓库也要按 `` - `仓库名` 不涉及 `` 的形态写一行（仓库名照抄 `config.yml`），不是省略本节
 - **一条笔记永远不被改写成另一个决定**：决定或理由翻转 → 新开一篇并互链
 - **禁止 `INDEX.md`**：集中式索引会与笔记树同时腐化；notes 根下只放 `README.md` / `AGENTS.md` / `CLAUDE.md`，笔记必须落在 `{class}/` 里
 - **归档不是改状态而是冻结**：归档后不再编辑、翻译、移动，且整篇豁免锚点校验
@@ -142,7 +142,7 @@ Status: implemented
 
 | 门禁 | 脚本 | 接的参数 | 守什么 |
 |---|---|---|---|
-| 1 结构 | `verify-note-tree.ts` | **notes 根**（省略取 `<cwd>/.agents/notes`） | 生命周期与分类闭集、目录深度、文件名形态、禁 `INDEX.md`、笔记间相对链接断链；notes 根与生命周期根只放白名单文件；符号链接 / junction / 特殊文件报「无法校验（符号链接/junction/特殊文件）」而非静默跳过；空树仍退 0 |
+| 1 结构 | `verify-note-tree.ts` | **notes 根**（省略取 `<cwd>/.agents/notes`） | 生命周期与分类闭集、目录深度、文件名形态、禁 `INDEX.md`、笔记间相对链接断链；notes 根与生命周期根**只拒绝其他 `.md`**（白名单外的 `.md` 判红），非 `.md` 文件目前静默通过；符号链接 / junction / 特殊文件报「无法校验（符号链接/junction/特殊文件）」而非静默跳过；空树仍退 0 |
 | 2 格式 | `verify-note-format.ts` | **notes 根** | 头三行、`Status` 与目录一致、`## Problem` 打头、必备节齐全、`implemented` / `archived` 禁提案用语、`Alternatives` 必写 |
 | 3 锚点 | `verify-note-anchors.ts` | **项目根**（省略取 `cwd`） | 仓库 / 分支 / commit **实时查 git**：分支不存在、commit 不在声明的分支上、声明的路径不是独立仓库根，都报错；`archived/` 整篇豁免 |
 
@@ -150,9 +150,11 @@ Status: implemented
 
 **门禁 1 / 2 接 notes 根，门禁 3 接项目根——参数语义不同是这里最容易踩的坑。** 最不会错的用法是 `cd` 到项目根后不带参数。
 
+**什么时候跑**：每次会话开始跑门禁 3（`SKILL.md` 第零节）；每次写完笔记跑门禁 1、2——门禁 3 只管锚点，结构与格式错误没有别的机制能发现。日常动作已写进 `skills/intent-notes/SKILL.md` 第六节与 `references/quality-gate.md` 第 0 步。
+
 ## 命令速查
 
-以下命令**由 agent 执行，人不需要敲**；列在这里是为了审查它到底跑了什么、排错，或在没有 agent 的环境里手工跑。`<skill>` = `<项目根>/.agents/skills/intent-notes`，都在项目根执行：
+以下命令**由 agent 执行，人不需要敲**；列在这里是为了审查它到底跑了什么、排错，或在没有 agent 的环境里手工跑。`<skill>` = `<项目根>/.agents/skills/intent-notes`（按你 harness 实际的扫描根替换），都在项目根执行：
 
 ```powershell
 node <skill>/scripts/init.ts <项目根> [--dry-run]      # 建骨架（存量项目初始化阶段 1）
@@ -162,7 +164,7 @@ node <skill>/scripts/verify-note-anchors.ts [项目根]    # 门禁 3：锚点
 node <skill>/scripts/backfill.ts <commit> [项目根]      # 漏写补救
 ```
 
-`backfill` **只读**，不写任何文件：它从那一个 commit 的 diff、涉及文件、分支、版本前缀里提取上下文，往 stdout 输出一段 markdown，交给 AI 据此补出一篇符合格式的笔记。它与初始化阶段的「历史收割」是同一条链路（`commit → 涉及文件 → 分支 → 版本前缀 → 所属需求`）的两种规模。
+`backfill` **只读**，不写任何文件：它从那一个 commit 的改动文件清单（`git show --name-only`，不含 diff 内容）、分支、版本前缀里提取上下文，往 stdout 输出一段 markdown，交给 AI 据此补出一篇符合格式的笔记。它与初始化阶段的「历史收割」是同一条链路（`commit → 涉及文件 → 分支 → 版本前缀 → 所属需求`）的两种规模。
 
 ## 存量项目初始化
 
@@ -172,14 +174,14 @@ node <skill>/scripts/backfill.ts <commit> [项目根]      # 漏写补救
 |---|---|---|
 | 1 建骨架 | 程序 | `init`：探测、建目录、写 config 与 notes/README（即上文快速开始的第一步、第二步） |
 | 2 重建 `AGENTS.md` | AI + 人确认 | 提取当前生效的规矩、修正漂移、每条挂链接（**最关键**） |
-| 3 选择性收割 | 程序筛 + AI 判断 | 从既有 specs / plans / sdd 里挑出含取舍与根因分析的写成笔记。判据是**它还会不会指导未来的改动**，预期产出远少于文档总数 |
+| 3 选择性收割 | AI 遍历筛 + AI 判断 | 从既有 specs / plans / sdd 里挑出含取舍与根因分析的写成笔记。判据是**它还会不会指导未来的改动**，预期产出远少于文档总数 |
 | 4 转入日常 | AI | 之后所有命中清单的改动顺手写笔记。**初始化是一次性的，运行是持续的** |
 
 阶段 2 还有一件 polyrepo 必需的收尾：agent 在**每个子仓库**的 `AGENT.md` 追加一行指针——否则规矩只对「在项目根工作的会话」生效，而对真正干活的子仓库会话失效：
 
 > 重要改动需在本项目 `.agents/notes/` 留笔记；规则见 `../../AGENTS.md` 与 `../../.agents/notes/README.md`。
 
-分工：**程序**探测、建骨架、筛候选、查锚点、跑门禁；**AI** 重建 `AGENTS.md`、判断存量文档、写笔记、铺指针；**人只做确认**——AI 抛出收割清单，人划掉不需要的。
+分工：**程序**探测、建骨架、查锚点、跑门禁；**AI** 重建 `AGENTS.md`、判断存量文档、写笔记、铺指针；**人只做确认**——AI 抛出收割清单，人划掉不需要的。
 
 ## 本仓库结构
 
@@ -190,7 +192,7 @@ intent-notes/
 │   ├── references/  (7)     # 格式细则、六分类判据、何时写、归档、自检、存量初始化、非代码工作目录
 │   ├── templates/   (5)     # 四种生命周期的填空模板 + notes/README.md 模板
 │   └── scripts/     (10)    # 三道门禁 + init + backfill + 5 个纯模块
-├── tests/                   # 8 个 spec（101 用例）
+├── tests/                   # 9 个 spec（130 用例）
 ├── docs/superpowers/        # 历史与当次 spec / plan（早期几份写于旧名 EvolveTrace 时，保留不改）
 ├── .superpowers/            # 开发账本（gitignored）
 └── package.json  tsconfig.json  README.md  .gitignore  .gitattributes
@@ -203,8 +205,9 @@ intent-notes/
 ## 已知限制
 
 - 部署必须**整目录复制**：`scripts/` 里的模块互相 import（如被门禁 import 的 `note-text.ts`），少一个就 `ERR_MODULE_NOT_FOUND`——fail-loud，不会静默
-- `config.yml` 的 `repos:` 段里每项 `- path:` 必须**先于** `name:`，且**不要写行内注释**（`#` 会被当成值的一部分）
+- `config.yml` 的 `repos:` 段**键序不限**（`path:` / `name:` 谁先都行），但**不要写行内注释**（`#` 会被当成值的一部分）；段内的注释行必须与条目**同缩进**——顶格的 `#` 会终止整个段的解析，其后的仓库条目被静默丢弃（实测：后面声明的仓库被完全遗忘，退出码仍为 0）
 - `detectSubRepos` 只探**一层**直接子目录；更深层的仓库需手工往 `repos:` 补条目（`init` 对已存在的 `config.yml` 跳过不覆盖，不会抹掉你的补充）
+- `config.yml` 的 `sources:` 段**没有任何程序消费者**（`scripts/` 下没有候选筛选程序）：它只由 `init-core.ts` 写入，供人阅读、AI 遍历筛选
 - 笔记里引用的**文件是否存在由人工自检**，锚点门禁只管仓库 / 分支 / commit（`gitTracksFile` 是预留能力，尚未接入）
 - **门禁查不了「该写却没写」**：那是语义判断，正则做不到。靠 `AGENTS.md` 规矩 + 子仓库指针预防、口头触发兜底、`backfill` 补救
 - 构建产物类的排除规则（`*.apk`、`.tmp-*` 之类）**不写进 `.gitignore` 模板**——通用工具不硬编码特定项目的模式，请自行添加
@@ -220,20 +223,20 @@ intent-notes/
 - **不绑方法论**：不依赖 superpowers 之类流程框架。装了只是触发更顺手——brainstorming 结束时手上正好有 2–3 个方案及取舍，此刻落笔记成本最低；存量收割的最佳原料也是已有的 specs / plans。没装照常工作，只是「考虑过但没选的方案」缺记录
 - **过度留痕和完全不记，是同一个错误的两种样子**：机械改动不写笔记
 
-完整的设计论证（与上游体系的差异、被砍掉的机制、验证过程）见 `docs/superpowers/specs/2026-10-14-evolvetrace-design.md`——写于项目叫 EvolveTrace 时，文件名与其中的路径是当时的。
+完整的设计论证（与上游体系的差异、被砍掉的机制、验证过程）见 `docs/superpowers/specs/2026-10-14-evolvetrace-design.md`——写于项目叫 EvolveTrace 时，文件名与其中的路径是当时的。其中 `.evolvetrace/config.yml`、`.agents/skills/evolvetrace/`、`evolvetrace backfill` 等路径与命令均已作废，现行形态以本 README 与 `skills/intent-notes/` 为准。
 
 ## 开发与测试
 
 ```powershell
-npm install          # 仅开发需要：typescript + @types/node
-npm test             # node --test "tests/*.spec.ts" → 101 用例
-npm run typecheck    # tsc --noEmit（strict，18 个文件）
+npm install          # 仅开发需要：typescript + @types/node；仓库未提交 lockfile，且 typescript@^7.0.2 是 caret 范围，安装结果不可复现
+npm test             # node --test "tests/*.spec.ts" → 130 用例
+npm run typecheck    # tsc --noEmit（strict，19 个文件）
 ```
 
 - 运行时**零依赖**：`node --test` 与三道门禁都不需要 `node_modules`
 - 要求 **Node ≥ 22.18**（原生 TypeScript 类型剥离自该版本起默认开启，无构建步骤）
 - 测试必须用 glob 形式：Node 22 的 `node --test <目录>` 会报 `Cannot find module`
-- `npm run verify` 把 cwd 当项目根去找 `.agents/notes`，**在本仓库根直接跑会报 ENOENT**（本仓库自身没有笔记树），它只在已初始化的项目内有效
+- `package.json` 不再提供 `verify` 脚本：本仓库自身不是笔记项目（没有 `.agents/notes`），该脚本命令写死相对本仓库根解析的路径，没有任何成功路径。三道门禁请在**已初始化项目的根目录**按上文「命令速查」用 `node <skill>/scripts/verify-note-*.ts` 执行
 - 改 skill 的流程：**先要一条失败的测试（RED → GREEN）**；改完跑 `npm test` + `npm run typecheck`
 
 本项目以 [MIT](LICENSE) 许可发布。门禁 1 / 2 移植改造自 DeepSeek Harness（MIT, Copyright (c) 2026 DeepSeek），门禁 3 的跨仓库锚点校验、`init`、`backfill` 为本项目新写。

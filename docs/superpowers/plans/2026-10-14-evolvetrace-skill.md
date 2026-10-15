@@ -1,3 +1,5 @@
+> 历史文档（写于项目名 EvolveTrace 时期）：其中的目录名、配置文件路径与命令为当时形态，已作废；现行形态以 `README.md` 与 `skills/intent-notes/` 为准。
+
 # EvolveTrace Skill 实现计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
