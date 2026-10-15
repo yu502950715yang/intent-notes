@@ -4,6 +4,8 @@
 
 笔记落在项目仓库的 `.agents/notes/` 下，跟着代码一起进版本控制。每条结论都挂**真实的**仓库 / 分支 / commit 锚点，由程序实时查 git 校验，不是让 AI 自由发挥。
 
+也适用于**不是代码仓库的工作目录**（需求 / PRD 文件夹）：由 agent 代劳版本控制，使用者不需要懂 git，见 `skills/intent-notes/references/plain-directory-mode.md`。
+
 一个自包含的 Agent Skill 包：Node ≥ 22.18，运行时零依赖。
 
 ## 它解决什么
@@ -185,7 +187,7 @@ node <skill>/scripts/backfill.ts <commit> [项目根]      # 漏写补救
 intent-notes/
 ├── skills/intent-notes/     ← 唯一的部署产物：整目录复制走
 │   ├── SKILL.md             # 主契约：何时写 / 怎么写 / 何时归档
-│   ├── references/  (6)     # 格式细则、六分类判据、何时写、归档、自检、存量初始化
+│   ├── references/  (7)     # 格式细则、六分类判据、何时写、归档、自检、存量初始化、非代码工作目录
 │   ├── templates/   (5)     # 四种生命周期的填空模板 + notes/README.md 模板
 │   └── scripts/     (10)    # 三道门禁 + init + backfill + 5 个纯模块
 ├── tests/                   # 8 个 spec（100 用例）
@@ -207,6 +209,7 @@ intent-notes/
 - **门禁查不了「该写却没写」**：那是语义判断，正则做不到。靠 `AGENTS.md` 规矩 + 子仓库指针预防、口头触发兜底、`backfill` 补救
 - 构建产物类的排除规则（`*.apk`、`.tmp-*` 之类）**不写进 `.gitignore` 模板**——通用工具不硬编码特定项目的模式，请自行添加
 - 部署副本里的 `scripts/*.ts` 可能在编辑器报 `ts(2591) 找不到名称 "node:fs"`——那是宿主项目没装 `@types/node`，**不影响运行**（Node 的类型剥离不做类型检查），不要为此改脚本
+- **非代码工作目录要求那台机器有 git**，且目录在**本地磁盘**（同步盘会损坏 `.git`）；git 缺失时脚本 fail-closed 报错，**不会**自行安装
 
 ## 设计取舍
 
