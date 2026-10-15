@@ -163,21 +163,21 @@ git -C "<工作目录>" branch --show-current     # 记下分支名，笔记要�
 
 `init` 会：`git init`（目标无 `.git` 时）→ 建 `.agents/notes/` 四生命周期 × 六分类 → 写 `.agents/intent-notes/config.yml`（`repos: - path: .`）与 `.agents/notes/README.md` → 追加 `.gitignore` 片段。
 
-**先写工作目录自己的 `AGENTS.md`**：本形态没有子仓库指针，只需一条「重要改动需在本项目 `.agents/notes/` 留笔记」（见 `references/bootstrap-existing-project.md` 阶段 2）。
-
-**然后做首次提交，把 init 的产物一起纳入**——否则 `.agents/` 与 `.gitignore` 会永久停在 `git status` 里，第零节「有未提交改动」的判据每个会话都会被它们误触发一次（`AGENTS.md` 必须先写出来，否则 `git add` 会因 `pathspec did not match` 整条失败、提交根本不发生）：
-
-```bash
-git -C "<工作目录>" add .agents .gitignore AGENTS.md
-git -C "<工作目录>" commit -m "chore: 建立 Agent Notes 骨架"
-```
-
 **必补 `.gitignore`**（Office 锁文件不排除，每次打开文档都会产生假改动）：
 
 ```gitignore
 ~$*
 .~lock.*
 *.tmp
+```
+
+**先写工作目录自己的 `AGENTS.md`**：本形态没有子仓库指针，只需一条「重要改动需在本项目 `.agents/notes/` 留笔记」（见 `references/bootstrap-existing-project.md` 阶段 2）。
+
+**然后做首次提交，把上面这些都纳入**——否则 `.agents/` 与 `.gitignore` 会永久停在 `git status` 里，第零节「有未提交改动」的判据每个会话都会被它们误触发一次（`.gitignore` 要先补好、`AGENTS.md` 要先写出来，否则首次提交要么漏掉规则、要么因 `pathspec did not match` 整条失败）：
+
+```bash
+git -C "<工作目录>" add .agents .gitignore AGENTS.md
+git -C "<工作目录>" commit -m "chore: 建立 Agent Notes 骨架"
 ```
 
 ## 每次改动的流程
@@ -190,7 +190,7 @@ git -C "<工作目录>" commit -m "chore: 建立 Agent Notes 骨架"
 6. 写笔记（若需要）：在 `## 涉及仓库` 段写锚点行，格式真源是 `references/note-format.md` 的「涉及仓库」一节。这里只说两点最容易踩的：
 
    - 锚点行必须**顶格写、不要缩进**：门禁按行首匹配，缩进会被判「无法解析」
-   - 三个占位换真值：目录名与分支名用 `git branch --show-current` 的结果，短哈希用上一步 commit 的短哈希
+   - 三个占位换真值：仓库名用工作目录名（即 `config.yml` 里 `path: .` 那条的 `name`），分支名用 `git branch --show-current` 的结果，短哈希用上一步 commit 的短哈希
 
    以 `templates/implemented.md` 起步时，模板里 ``- `{{不涉及的仓库名}}` 不涉及`` 那一行**若没有对应仓库就整行删掉**——留着会被门禁 3 报「仓库 `占位内容` 未在项目声明中」，而本形态的首篇笔记没有第二个仓库，必然命中。
 7. 提交笔记，**产物先提交、笔记后提交**（笔记的 commit 锚点只能指向已存在的 commit）：
@@ -349,7 +349,7 @@ git commit -m "docs: 存量初始化与非代码工作目录的衔接"
 
 - [ ] **Step 3: 已知限制加一条**
 
-在「已知限制」列表的**最后一条**（以 `` `- 部署副本里的 \`scripts/*.ts\` 可能在编辑器报` `` 开头）之后追加：
+在「已知限制」列表的**最后一条**（`ts(2591)` 那一条）之后追加：
 
 ```markdown
 - **非代码工作目录要求那台机器有 git**，且目录在**本地磁盘**（同步盘会损坏 `.git`）；git 缺失时脚本 fail-closed 报错，**不会**自行安装
