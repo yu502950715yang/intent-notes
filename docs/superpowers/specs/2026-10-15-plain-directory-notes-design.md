@@ -53,7 +53,7 @@ git 不可用时：**不要下载或安装任何软件**。停止初始化，如
 
 理由：让 agent 自主下载并运行二进制工具是不可逆且越界的行为；本 skill 的职责是记录决策，不是管理系统依赖；受管控电脑上擅自安装会引发 IT 问题。
 
-### 改动清单：0 行程序代码 + 5 处文档
+### 改动清单：0 行程序代码 + 6 处文档
 
 | # | 文件 | 改什么 |
 |---|---|---|
@@ -100,12 +100,14 @@ git 不可用时：**不要下载或安装任何软件**。停止初始化，如
 
 ### 4. 新增 `references/plain-directory-mode.md` 大纲
 
-- **适用与前提**：非代码工作目录；机器有 git；目录必须在**本地磁盘**（同步盘 / 网盘的同步会损坏 `.git`）
-- **部署前自检**：`node --version`、`git --version`、`git config user.email`——先自检再 init，让失败信息是人话而不是裸命令错误
-- **初始化**：`node "<skill-dir>/scripts/init.ts" "<目录>"` → `git branch --show-current` 确认分支名（可能是 `master` 而非 `main`，笔记要照抄）→ 缺 `user.name` / `user.email` 先配
+- **适用与前提**：非代码工作目录；机器有 git；目录必须在**本地磁盘**（同步盘 / 网盘的同步会损坏 `.git`）；目录**不得已在某个 git 仓库内**（如代码仓库的 `docs/prd/`）——那种情况直接用上层仓库走常规形态，嵌套 `.git` 会被上层仓库当成 gitlink，两边 `git status` 互相看不见
+- **部署前自检**：`node --version`、`git --version`、`git config user.email`——先自检再 init，让失败信息是人话而不是裸命令错误；缺身份就在**该目录内**配（`git -C "<目录>" config user.email/user.name`），不要改全局配置
+- **初始化**：`node "<skill-dir>/scripts/init.ts" "<目录>"` → `git branch --show-current` 确认分支名（可能是 `master` 而非 `main`，笔记要照抄）
+- **首次提交把 init 的产物一起纳入**：写工作目录自己的 `AGENTS.md`（本形态没有子仓库，只需一条「重要改动需在本项目 `.agents/notes/` 留笔记」的指针，见 `bootstrap-existing-project.md` 阶段 2），然后 `git add .agents .gitignore AGENTS.md` 并提交。否则 `.agents/` 与 `.gitignore` 永久停在 `git status --short` 里，第 0 节「有未提交改动 → 必须走第一节判定」会被这堆常驻 `??` 每个会话误触发一次
 - **必补 `.gitignore`**：`~$*`、`.~lock.*`、`*.tmp`——Office 锁文件不排除，每次打开文档都会产生假改动，这是最影响信任的一条
-- **每次改动流程**：改产物 → `git status` 看范围 → 判要不要笔记（第一节）→ `git add` **指定文件** → commit（中文一句话）→ 写笔记 → 提交笔记
-- **两个坑**：第一篇笔记之前必须先有一次提交（否则分支 ref 尚不存在，门禁会红）；commit 前先看 status，别把密码 / 原始素材提交进去
+- **每次改动流程**：改产物 → `git status` 看范围 → 判要不要笔记（第一节）→ `git add` **指定文件** → commit（中文一句话）→ 写笔记 → 提交笔记（`git add` + `git commit`，格式真源是 `note-format.md`；锚点行必须顶格、不能缩进，门禁按行首匹配）
+- **首篇笔记删占位行**：以 `templates/implemented.md` 起步时，``- `{{不涉及的仓库名}}` 不涉及`` 那一行没有对应仓库就整行删掉，否则门禁 3 报「仓库 `占位内容` 未在项目声明中」
+- **两个实际坑与一个显示问题**：第一篇笔记之前必须先有一次提交（否则分支 ref 尚不存在，门禁会红）；commit 前先看 status，别把密码 / 原始素材提交进去；`git status --short` 默认 `core.quotepath=true` 会把中文名转义成 `"PRD-\347\231\273..."`——只影响显示，信号完好（`git config core.quotepath false` 可读）
 - **代价**：Word / Excel / PPT 是二进制，每次改动全量入库，仓库会膨胀（PRD 量级可接受）
 - **git 缺失时**：只报告不安装，见上「硬约定」
 
@@ -120,7 +122,7 @@ git 不可用时：**不要下载或安装任何软件**。停止初始化，如
 1. 在一个真实需求文件夹上跑 `init`，确认 `.git`、`.agents/notes/` 骨架、`.agents/intent-notes/config.yml`（`repos: - path: .`）落盘正确
 2. 提交一次产物 → 写第一篇笔记（锚点用该 commit）→ 门禁 3 绿
 3. 修改产物 → 按第 0 节 `git status` 应当报出改动 → 判定是否留笔记（这一环是**没有门禁保护**的，必须实测）
-4. 回归：`npm test`（100 用例）+ `npm run typecheck`——因零代码改动，预期全绿，用于确认没有误伤
+4. 回归：`npm test`（101 用例）+ `npm run typecheck`——因零代码改动，预期全绿，用于确认没有误伤
 
 **已知环境阻碍**：本机 `pwsh` 启动即失败（exit code 3221225794 / `STATUS_DLL_INIT_FAILED`），`npm` 脚本与 git 命令均无法执行。实施与验收前需先修复。
 
