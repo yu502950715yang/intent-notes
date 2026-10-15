@@ -68,7 +68,7 @@ description: 在交付项目或工作目录里留下并维护决策笔记（Agen
 - 取代与归档：`references/archiving.md`
 - 写完自检：`references/quality-gate.md`
 - 存量项目初始化：`references/bootstrap-existing-project.md`
-- 非代码工作目录（需求 / PRD 文件夹，由 agent 代劳 git）：`references/plain-directory-mode.md`
+- 非代码工作目录（需求 / PRD 文件夹，由 agent 代劳版本控制）：`references/plain-directory-mode.md`
 - **笔记与 spec 的分工**：接口 / 格式 / 流程的**契约**归项目文档（`docs/`、下游改造说明等），**理由与取舍**归笔记；两者互链。写契约不等于写笔记，写笔记也不代替契约。
 
 ## 六、交给人之前

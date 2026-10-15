@@ -191,7 +191,7 @@ intent-notes/
 │   ├── templates/   (5)     # 四种生命周期的填空模板 + notes/README.md 模板
 │   └── scripts/     (10)    # 三道门禁 + init + backfill + 5 个纯模块
 ├── tests/                   # 8 个 spec（101 用例）
-├── docs/superpowers/        # 历史 spec / plan（写于旧名 EvolveTrace 时，保留不改）
+├── docs/superpowers/        # 历史与当次 spec / plan（早期几份写于旧名 EvolveTrace 时，保留不改）
 ├── .superpowers/            # 开发账本（gitignored）
 └── package.json  tsconfig.json  README.md  .gitignore  .gitattributes
 ```
