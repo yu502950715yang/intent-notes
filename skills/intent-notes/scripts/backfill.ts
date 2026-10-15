@@ -16,7 +16,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { git, parseRepoList } from './note-anchors.ts'
+import { checkRepoRoots, git, parseRepoList } from './note-anchors.ts'
 import { walkAgentNoteTree } from './note-tree.ts'
 import { collectCommitContext, renderBackfill, type CommitContext } from './backfill-core.ts'
 
@@ -31,7 +31,17 @@ if (!existsSync(configPath)) {
   console.error(`backfill: ${configPath} 不存在`)
   process.exit(1)
 }
-const repos = parseRepoList(readFileSync(configPath, 'utf8'))
+// config 里存的是相对路径，而 checkRepoRoots 与后续探测都要绝对路径
+const repos = new Map<string, string>()
+for (const [name, rel] of parseRepoList(readFileSync(configPath, 'utf8'))) repos.set(name, resolve(projectRoot, rel))
+// 每个 path 必须是独立仓库根：git 会向上寻找仓库，path 只是上层仓库里的普通目录时
+// cat-file 会命中上层仓库，渲染出的锚点行把外层 commit 记在子仓库名下（错锚点进永久笔记）
+const rootIssues = checkRepoRoots(repos)
+if (rootIssues.length > 0) {
+  console.error('backfill: 仓库清单预检失败（每个 path 必须是独立仓库根）：')
+  for (const i of rootIssues) console.error(`  repos: ${i.name}（${i.path}）— ${i.reason}`)
+  process.exit(1)
+}
 const notesRoot = join(projectRoot, '.agents', 'notes')
 
 let ctx: CommitContext | undefined
@@ -40,8 +50,7 @@ let repoName = ''
 // 只用「都找不到」一句话盖住会让真正的原因（配置写错、git 缺失）无从下手，
 // 所以逐仓库带上 git 自己的 stderr（note-anchors 的 git() 已保留它）。
 const probeErrors: string[] = []
-for (const [name, rel] of repos) {
-  const repoPath = resolve(projectRoot, rel)
+for (const [name, repoPath] of repos) {
   const probe = git(repoPath, ['cat-file', '-e', `${sha}^{commit}`])
   if (probe.ok) {
     ctx = collectCommitContext(name, repoPath, sha)

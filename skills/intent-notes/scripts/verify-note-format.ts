@@ -42,6 +42,9 @@ const ARCHIVED_LINE = /^Archived: \d{4}-\d{2}-\d{2}$/
 /** 备选方案未记录的显式标记：仅用于从存量文档收割、原始材料确实没写备选的笔记。 */
 const ALTERNATIVES_NOT_RECORDED = '<!-- alternatives: not-recorded -->'
 
+/** 未替换的模板占位。`prose` 已剔代码围栏，引用模板语法的笔记不会被误伤。 */
+const PLACEHOLDER = /\{\{[^}]*\}\}/
+
 const root = resolve(process.argv[2] ?? join(process.cwd(), '.agents', 'notes'))
 const { notes, errors } = walkAgentNoteTree(root)
 
@@ -96,10 +99,19 @@ for (const note of notes) {
   if (!hasAlternatives && !marked) {
     fail('missing `## Alternatives considered`（存量收割的笔记若原始材料确实未记录备选，写 `<!-- alternatives: not-recorded -->`）')
   }
+  // 模板占位没填完等于没写：门禁 3 能抓到锚点段里的占位，正文里的必须在这里抓
+  if (prose.some(l => PLACEHOLDER.test(l))) {
+    fail('正文仍有未替换的模板占位 `{{...}}`；占位要么填成真实内容，要么整行删掉')
+  }
 }
 
 if (errors.length === 0) {
-  console.log(`verify-note-format: 检查 ${notes.length} 篇笔记，格式全部合规。`)
+  // 0 篇不能说「全部合规」：根目录写错与 init 刚建完的空骨架会输出同一句话（与门禁 1 同口径）
+  console.log(
+    notes.length === 0
+      ? 'verify-note-format: 未发现任何笔记，请确认根目录正确（init 刚建完的空骨架属正常，仍退 0）。'
+      : `verify-note-format: 检查 ${notes.length} 篇笔记，格式全部合规。`,
+  )
   process.exit(0)
 }
 console.error('verify-note-format: 发现违规：')

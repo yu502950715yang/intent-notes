@@ -17,7 +17,8 @@ export interface ProseLine {
 
 /** 统一行尾：Windows 上 core.autocrlf=true 会把笔记检出成 CRLF，不归一会让每篇合规笔记都被误判。 */
 export function toLines(text: string): string[] {
-  return text.replace(/\r\n?/g, '\n').split('\n')
+  // BOM 不是文档结构：Windows 的编辑器与重定向常写它，不剥会让第 1 行与状态行的判定恒失败
+  return text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n')
 }
 
 interface Fence {
@@ -79,9 +80,13 @@ export interface ParsedNote {
   prose: string[]
 }
 
+/** 二级标题：CommonMark 允许 ≤3 空格缩进，与 note-anchors 的段头判定同口径。 */
+const H2 = /^ {0,3}## /
+
 /** 解析笔记文本。代码围栏内的 `##` 与 `Status:` 不算文档结构。 */
 export function parseNote(text: string): ParsedNote {
   const prose = proseLines(text)
-  const h2s = prose.filter(l => l.startsWith('## ')).map(l => l.trimEnd())
+  // 归一掉前导缩进，调用方才能拿 `## Decision` 这类字面量直接比较
+  const h2s = prose.filter(l => H2.test(l)).map(l => l.trim())
   return { firstH2: h2s[0], h2s, statusLine: toLines(text)[2], prose }
 }

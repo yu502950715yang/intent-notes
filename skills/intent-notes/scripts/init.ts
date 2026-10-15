@@ -11,7 +11,7 @@
  * 建目录、写 .gitignore 片段与 .agents/intent-notes/config.yml。
  * 不提交、不修改任何既有文件的内容（.gitignore 仅追加缺失段）。
  */
-import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, appendFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { AGENT_NOTE_CLASSES, AGENT_NOTE_LIFECYCLES, ARCHIVE_DIR } from './note-tree.ts'
@@ -51,7 +51,29 @@ const existingGitignore = existsSync(gitignorePath) ? readFileSync(gitignorePath
 // 覆盖会静默抹掉那些条目，相关笔记随即回到「未在项目声明中」
 const configExists = existsSync(configPath)
 const needsRootGit = !existsSync(join(projectRoot, '.git'))
-const needsGitignore = !existingGitignore.includes(MARKER)
+// 标记必须是独立整行：includes() 会被「注释里提到它」的一行骗到，排除规则静默不写
+const needsGitignore = !existingGitignore.split(/\r?\n/).includes(MARKER)
+
+// 写盘目标不能是指向别处的链接：.agents 或 .agents/notes 做成 junction 时，
+// 整份骨架会落到项目外（同步盘还会损坏 .git），而文案只说「骨架已建立」
+for (const rel of ['.agents', join('.agents', 'notes'), join('.agents', 'intent-notes')]) {
+  const abs = join(projectRoot, rel)
+  if (!existsSync(abs)) continue
+  if (lstatSync(abs).isSymbolicLink()) {
+    console.error(`init: ${abs} 是符号链接/junction（→ ${realpathSync(abs)}），拒绝把骨架写到项目外；请改用真实目录`)
+    process.exit(1)
+  }
+}
+
+// git 会向上寻找仓库：目标在上层仓库里时再 init 会造出嵌套仓库，
+// 上层仓库对内部改动视而不见（只看到 `?? 目录/`）
+if (needsRootGit) {
+  const enclosing = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: projectRoot, encoding: 'utf8' })
+  if (enclosing.status === 0) {
+    console.error(`init: ${projectRoot} 已在 git 仓库 ${(enclosing.stdout ?? '').trim()} 内，不能在此建立嵌套仓库；请以该仓库根作为项目根`)
+    process.exit(1)
+  }
+}
 
 const actions: string[] = []
 actions.push(`项目根：${projectRoot}`)

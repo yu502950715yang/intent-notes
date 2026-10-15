@@ -10,6 +10,7 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { walkAgentNoteTree } from './note-tree.ts'
+import { fenceAwareLines } from './note-text.ts'
 
 const root = resolve(process.argv[2] ?? join(process.cwd(), '.agents', 'notes'))
 const { notes, errors } = walkAgentNoteTree(root)
@@ -36,11 +37,14 @@ for (const note of notes) {
     errors.push(`structure: ${note.rel} — 不可读`)
     continue
   }
-  for (const target of localLinkTargets(text)) {
-    if (target === '') continue
-    const resolved = resolve(dirname(abs), target)
-    if (!existsSync(resolved)) {
-      errors.push(`structure: ${note.rel} — 相对链接指向不存在的文件：${target}`)
+  // 必须按围栏解析：记录本格式的笔记会在代码块里引示例链接，扫全文会把示例当断链误红
+  for (const line of fenceAwareLines(text)) {
+    for (const target of localLinkTargets(line.text)) {
+      if (target === '') continue
+      const resolved = resolve(dirname(abs), target)
+      if (!existsSync(resolved)) {
+        errors.push(`structure: ${note.rel}:${line.index + 1} — 相对链接指向不存在的文件：${target}`)
+      }
     }
   }
 }

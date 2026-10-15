@@ -104,7 +104,10 @@ export interface GitResult {
 }
 
 export function git(repoPath: string, args: string[]): GitResult {
-  const r = spawnSync('git', args, { cwd: repoPath, encoding: 'utf8' })
+  // core.quotepath 默认开启会把非 ASCII 路径输出成八进制转义（`"\344\270\255..."`）：
+  // backfill 会把这种假路径写进笔记，basename 启发式也永远匹配不上旧笔记。
+  // `-c` 必须在子命令之前，放后面会被 git 当成子命令的参数。
+  const r = spawnSync('git', ['-c', 'core.quotepath=false', ...args], { cwd: repoPath, encoding: 'utf8' })
   // 保留 stderr：出问题时能区分「git 不在 PATH」「路径不是仓库」与「分支确实不存在」
   const out: GitResult = {
     ok: r.status === 0,
@@ -166,6 +169,9 @@ export function parseRepoListChecked(configText: string): { repos: Map<string, s
       inRepos = true
       continue
     }
+    // 注释行既不是顶层键也不是条目：顶格注释曾让旧写法直接 break，
+    // 其后的仓库条目被静默丢弃（不报任何错）
+    if (inRepos && /^\s*#/.test(line)) continue
     // 遇到下一个顶层键（sources: 等）即结束；`- ` 序列行与 `repos:` 同缩进也是合法 YAML，不能当成顶层键
     if (inRepos && /^\S/.test(line) && !/^-\s/.test(line)) break
     if (!inRepos) continue

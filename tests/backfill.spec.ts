@@ -9,7 +9,8 @@ import { collectCommitContext, extractVersionPrefix, parseBranchLines, renderBac
 const skillRoot = resolve(import.meta.dirname, '../skills/intent-notes')
 
 function git(cwd: string, ...args: string[]): string {
-  const r = spawnSync('git', args, { cwd, encoding: 'utf8' })
+  // -c 覆盖全局 git 配置：gpgsign 会让 commit 失败，core.abbrev 会让 --short 不足 7 位而锚点门禁判红
+  const r = spawnSync('git', ['-c', 'commit.gpgsign=false', '-c', 'core.abbrev=40', ...args], { cwd, encoding: 'utf8' })
   assert.equal(r.status, 0, `git ${args.join(' ')} 失败：${r.stderr}`)
   return r.stdout.trim()
 }
@@ -110,8 +111,10 @@ test('以 + 开头的真分支名端到端保留', () => {
   rmSync(path, { recursive: true, force: true })
 })
 
-test('color.branch=always 下取到的是干净分支名', () => {
-  // 标记本身无色而名字带 ANSI，不去色就会解析出 `\e[32mmain\e[m` 这种假分支名
+test('color.branch=always 且 detached HEAD 时，不带 ANSI 的假分支名不得混进结果', () => {
+  // 标记本身无色而名字带 ANSI：缺 `--no-color` 时 detached 行解析成 `\e[32m(HEAD detached at …)\e[m`，
+  // 它不以 `(HEAD detached ` 开头 → 一个假分支名被写进锚点行。
+  // 必须用「不在任何分支上的 detached commit」构造：否则 main 也 contains 该 commit，测不到这条路径。
   const path = mkdtempSync(join(tmpdir(), 'intent-notes-bf-color-'))
   git(path, 'init', '-q', '-b', 'main')
   git(path, 'config', 'user.email', 't@example.com')
@@ -120,9 +123,11 @@ test('color.branch=always 下取到的是干净分支名', () => {
   writeFileSync(join(path, 'a.txt'), 'x\n')
   git(path, 'add', '.')
   git(path, 'commit', '-q', '-m', 'x')
+  git(path, 'checkout', '-q', '--detach', 'HEAD')
+  git(path, 'commit', '-q', '--allow-empty', '-m', 'detached work')
 
   const ctx = collectCommitContext('cloud', path, 'HEAD')
-  assert.deepEqual(ctx.branches, ['main'], `分支名里混进了 ANSI：${JSON.stringify(ctx.branches)}`)
+  assert.deepEqual(ctx.branches, [], `detached 行被解析成了假分支：${JSON.stringify(ctx.branches)}`)
   rmSync(path, { recursive: true, force: true })
 })
 
@@ -289,15 +294,16 @@ test('CLI：找不到 commit 时 exit 1 且不产出片段', () => {
   rmSync(root, { recursive: true, force: true })
 })
 
-test('CLI：探测失败逐仓库给出 git 的 stderr（路径不存在也能看出来）', () => {
+test('CLI：路径不存在时仓库根预检就点明，不再刷「都找不到 commit」', () => {
   const root = mkdtempSync(join(tmpdir(), 'intent-notes-bf-probe-'))
   mkdirSync(join(root, '.agents', 'intent-notes'), { recursive: true })
   writeFileSync(join(root, '.agents', 'intent-notes', 'config.yml'), 'project: demo\nrepos:\n  - path: nope\n    name: nope\n')
   const r = spawnSync('node', ['skills/intent-notes/scripts/backfill.ts', 'HEAD', root], { encoding: 'utf8' })
   assert.equal(r.status, 1, r.stderr)
-  assert.match(r.stderr, /都找不到 commit HEAD/)
-  assert.match(r.stderr, /nope/, `未指出是哪个仓库探测失败：${r.stderr}`)
-  assert.match(r.stderr, /ENOENT|cannot change to|不是仓库|No such file/, `未带上 git 的失败原因：${r.stderr}`)
+  assert.match(r.stderr, /仓库清单预检失败/)
+  assert.match(r.stderr, /nope/, `未指出是哪个仓库有问题：${r.stderr}`)
+  // 「路径不存在」与「不是独立仓库根」「commit 确实不在」必须可区分，否则用户无从下手
+  assert.match(r.stderr, /路径不存在/, `未点明原因：${r.stderr}`)
   rmSync(root, { recursive: true, force: true })
 })
 
@@ -309,8 +315,8 @@ test('CLI：git 不在 PATH 时也给出可区分的原因', () => {
     env: { ...process.env, PATH: '', Path: '' },
   })
   assert.equal(r.status, 1, r.stderr)
-  assert.match(r.stderr, /都找不到 commit HEAD/)
   assert.match(r.stderr, /ENOENT/, `「git 不在 PATH」与「commit 确实不在」没区分开：${r.stderr}`)
+  assert.match(r.stderr, /git 不可用/, `未点明 git 不可用：${r.stderr}`)
   rmSync(root, { recursive: true, force: true })
 })
 
