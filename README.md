@@ -233,4 +233,4 @@ npm run typecheck    # tsc --noEmit（strict，18 个文件）
 - `npm run verify` 把 cwd 当项目根去找 `.agents/notes`，**在本仓库根直接跑会报 ENOENT**（本仓库自身没有笔记树），它只在已初始化的项目内有效
 - 改 skill 的流程：**先要一条失败的测试（RED → GREEN）**；改完跑 `npm test` + `npm run typecheck`
 
-门禁 1 / 2 移植改造自 DeepSeek Harness（MIT, Copyright (c) 2026 DeepSeek），门禁 3 的跨仓库锚点校验、`init`、`backfill` 为本项目新写。`package.json` 声明 MIT。
+本项目以 [MIT](LICENSE) 许可发布。门禁 1 / 2 移植改造自 DeepSeek Harness（MIT, Copyright (c) 2026 DeepSeek），门禁 3 的跨仓库锚点校验、`init`、`backfill` 为本项目新写。
