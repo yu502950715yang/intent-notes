@@ -75,7 +75,7 @@ test('description 的初始化触发只用「笔记」这一叫法，不提「�
   assert.doesNotMatch(desc, /知识库/, '本体系做的是决策笔记树而非知识库，description 不应出现这个词')
 })
 
-test('六份 references 与四份模板齐备', () => {
+test('七份 references 与四份模板齐备', () => {
   for (const rel of [
     'references/note-format.md',
     'references/classification.md',
@@ -83,6 +83,7 @@ test('六份 references 与四份模板齐备', () => {
     'references/archiving.md',
     'references/quality-gate.md',
     'references/bootstrap-existing-project.md',
+    'references/plain-directory-mode.md',
     'templates/proposed.md',
     'templates/implemented.md',
     'templates/archived.md',
