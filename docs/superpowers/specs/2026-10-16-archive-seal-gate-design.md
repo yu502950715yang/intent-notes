@@ -83,8 +83,8 @@
 | 现象 | 判定 |
 |---|---|
 | 磁盘有、manifest 无 | `未封存`——归档后没跑 `--write` |
-| 哈希不符 | `内容已改动`——除 `history` 里的 reseal 记录外一律判红 |
-| manifest 有、磁盘无 | `已删除`——除 `history` 里的 forget 记录外一律判红 |
+| 哈希不符 | `内容已改动`——一律判红，只有 `--reseal` 能更新封印 |
+| manifest 有、磁盘无 | `已删除`——一律判红，只有 `--forget` 能撤销条目 |
 | `manifest.json` 缺失但有归档笔记 | 报「整棵归档树未封存」，并提示首次封印命令 |
 
 **`--write`（封印入口）**：
@@ -98,7 +98,7 @@
 - `--reseal <class>/<file>.md --reason=<text>`：修改已封存内容。向 `history` 追加 `{ action: 'reseal', path, at, reason, from, to }`
 - `--forget <class>/<file>.md --reason=<text>`：撤销一次误归档，此后不再要求该文件存在。向 `history` 追加 `{ action: 'forget', path, at, reason, from }`
 
-门禁 4 的放行规则：哈希不符时，若 `history` 中存在该路径的 `reseal` 且其 `to` 等于磁盘当前哈希，则放行；文件缺失时，若存在该路径的 `forget`，则放行。`at` 取**本地日期** `YYYY-MM-DD`。
+两个通道都**直接改写 `artifacts`**：`reseal` 把该路径的哈希更新为新值，`forget` 删除该条目。`history` 只作审计留痕，**不参与门禁判定**——若让 `history` 去放行「哈希不符」，就会把「有人回滚了 manifest、而文件是新内容」这种真实不一致也一起放行。`at` 取**本地日期** `YYYY-MM-DD`。
 
 删除**不会**被静默接受：「误归档」必须走 `--forget` 并留下理由，这条记录就是它日后被追问时的答案。
 
