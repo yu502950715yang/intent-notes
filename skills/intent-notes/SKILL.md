@@ -85,6 +85,8 @@ node "<skill-dir>/scripts/verify-note-seal.ts"   "<项目根>/.agents/notes"   #
 
 **归档了就必须封印**：把笔记移进 `archived/` 后立刻跑 `verify-note-seal.ts … --write`，否则门禁 4 会报「未封存」；**`archived/manifest.json` 要与笔记一起 `git add`**（hook 会单独查这一条，漏了就退 1）。
 
+**归档会改路径，入站链接要在同一批里修完**：活跃笔记指向 `implemented/{class}/…` 的相对链接在归档后立刻断链，门禁 1 判红——重定向到取代它的新篇，或改写为归档路径（当引用是故意引史）；处置细则见 `references/archiving.md`。
+
 **机械闸门（推荐装一次）**：`node "<skill-dir>/scripts/install-hook.ts" "<项目根>"` 会把门禁 4 / 1 / 2 装进 `.git/hooks/pre-commit`——归档有变就查封印，笔记有变就查结构格式，只改代码的 commit 零开销。装了它，「忘了跑门禁」就不再依赖记性。
 
 **门禁 1 / 2 / 4 接 notes 根，门禁 3 接项目根**——参数语义不同，别把项目根喂给门禁 1（门禁 3 见第零节那条 `verify-note-anchors.ts` 命令；`install-hook.ts` 与门禁 3 同为项目根）。红了**就地修完再向用户报告**，不要带着红门禁交付。
