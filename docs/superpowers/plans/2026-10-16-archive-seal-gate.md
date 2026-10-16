@@ -411,7 +411,7 @@ Expected: FAIL — 找不到 `seal-core.ts`
  * 纯模块：无模块级副作用，CLI 与 spec 都可安全 import。
  */
 import { createHash } from 'node:crypto'
-import { readFileSync, readdirSync, writeFileSync, existsSync, statSync, type Dirent } from 'node:fs'
+import { readFileSync, readdirSync, writeFileSync, existsSync, type Dirent } from 'node:fs'
 import { join } from 'node:path'
 import { ARCHIVE_DIR } from './note-tree.ts'
 
@@ -442,21 +442,11 @@ export function archiveRoot(notesRoot: string): string {
   return join(notesRoot, ARCHIVE_DIR)
 }
 
-function isRealDir(entry: Dirent, abs: string): boolean {
-  if (entry.isDirectory()) return true
-  if (!entry.isSymbolicLink()) return false
-  try {
-    return statSync(abs).isDirectory()
-  } catch {
-    return false
-  }
-}
-
 /**
  * 列出 archived/ 下的全部笔记，返回相对 `archived/` 的路径（字典序）。
  *
- * 与门禁 1 同口径：非常规条目（链接 / 特殊文件）报错而不是静默跳过——静默跳过等于
- * 让归档笔记凭空逃出封印。
+ * 与门禁 1 同口径：只认普通目录与普通文件，链接（含指向目录的 junction/symlink）与特殊
+ * 文件一律报错——跟随它们既会封印扫描根之外的目录，又可能让递归成环而无终止。
  */
 export function listSealedFiles(notesRoot: string): { files: string[]; errors: string[] } {
   const root = archiveRoot(notesRoot)
@@ -474,8 +464,7 @@ export function listSealedFiles(notesRoot: string): { files: string[]; errors: s
     }
     for (const entry of entries) {
       const childRel = rel === '' ? entry.name : `${rel}/${entry.name}`
-      const childAbs = join(root, childRel)
-      if (isRealDir(entry, childAbs)) {
+      if (entry.isDirectory()) {
         walk(childRel)
         continue
       }
@@ -484,7 +473,7 @@ export function listSealedFiles(notesRoot: string): { files: string[]; errors: s
         if (childRel !== SEAL_MANIFEST && entry.name.toLowerCase().endsWith('.md')) files.push(childRel)
         continue
       }
-      errors.push(`seal: ${ARCHIVE_DIR}/${childRel} — 无法校验（无法读取的条目）`)
+      errors.push(`seal: ${ARCHIVE_DIR}/${childRel} — 无法校验（符号链接/junction/特殊文件）`)
     }
   }
   walk('')
