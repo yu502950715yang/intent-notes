@@ -1045,16 +1045,22 @@ Expected: FAIL — 找不到脚本
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 
+const USAGE = '用法：node scripts/install-hook.ts <项目根> [--dry-run] [--force]'
+
 const args = process.argv.slice(2)
+// 拼错的 flag 不能被静默忽略：`--forc` 会被当成「没给 --force」，覆盖请求变成拒绝
+for (const flag of args.filter(a => a.startsWith('--'))) {
+  if (flag !== '--dry-run' && flag !== '--force') {
+    console.error(`install-hook: 未知参数 ${flag}\n${USAGE}`)
+    process.exit(1)
+  }
+}
 const dryRun = args.includes('--dry-run')
 const force = args.includes('--force')
 const target = args.find(a => !a.startsWith('--'))
+// 少敲一个参数不能变成「对当前目录动工」
 if (target === undefined) {
-  console.error('用法：node scripts/install-hook.ts <项目根> [--dry-run] [--force]')
-  process.exit(1)
-}
-if (target.startsWith('--')) {
-  console.error(`install-hook: 未知参数 ${target}；用法：node scripts/install-hook.ts <项目根> [--dry-run] [--force]`)
+  console.error(USAGE)
   process.exit(1)
 }
 const projectRoot = resolve(target)
@@ -1063,7 +1069,8 @@ if (!existsSync(projectRoot)) {
   console.error(`install-hook: 项目根不存在：${projectRoot}`)
   process.exit(1)
 }
-if (!existsSync(join(projectRoot, '.git'))) {
+const gitDir = join(projectRoot, '.git')
+if (!existsSync(gitDir)) {
   console.error(`install-hook: ${projectRoot} 不是 git 仓库，请先跑 init.ts 建骨架`)
   process.exit(1)
 }
@@ -1100,7 +1107,22 @@ if ! git diff --cached --quiet -- "$NOTES"; then
 fi
 `
 
-const existing = existsSync(hookPath) ? readFileSync(hookPath, 'utf8') : undefined
+// worktree/子模块的 `.git` 是指针文件，钩子不在那里；照写会抛裸 ENOTDIR
+if (!lstatSync(gitDir).isDirectory()) {
+  console.error(`install-hook: ${gitDir} 是 gitdir 指针文件（worktree/子模块），钩子不在那里，拒绝写入。`)
+  console.error('  请改在公共 git 目录（git rev-parse --git-common-dir）的 hooks/ 下手工接入：')
+  console.error('')
+  console.error(HOOK)
+  process.exit(1)
+}
+
+// 读之前先验类型：pre-commit 是目录/链接时 readFileSync 会抛裸 EISDIR，且链接会把 hook 写到项目外
+const hookExists = existsSync(hookPath)
+if (hookExists && !lstatSync(hookPath).isFile()) {
+  console.error(`install-hook: ${hookPath} 已存在但不是普通文件，拒绝写入`)
+  process.exit(1)
+}
+const existing = hookExists ? readFileSync(hookPath, 'utf8') : undefined
 if (existing === HOOK) {
   console.log(`install-hook: 已安装（内容一致），跳过。${hookPath}`)
   process.exit(0)
@@ -1120,10 +1142,6 @@ if (dryRun) {
 }
 
 mkdirSync(join(projectRoot, '.git', 'hooks'), { recursive: true })
-if (existsSync(hookPath) && !lstatSync(hookPath).isFile()) {
-  console.error(`install-hook: ${hookPath} 已存在但不是普通文件，拒绝写入`)
-  process.exit(1)
-}
 writeFileSync(hookPath, HOOK, 'utf8')
 // Windows 上 chmod 无效但不报错；Git for Windows 不看权限位
 chmodSync(hookPath, 0o755)
