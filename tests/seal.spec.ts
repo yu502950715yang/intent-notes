@@ -1,0 +1,167 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import {
+  checkSeal, forgetOne, readManifest, resealOne, writeSeal, SEAL_MANIFEST,
+} from '../skills/intent-notes/scripts/seal-core.ts'
+
+/** 建一棵 notes 树，notes 为 相对路径 -> 文件内容。 */
+function scaffold(notes: Record<string, string>): string {
+  const root = mkdtempSync(join(tmpdir(), 'intent-notes-seal-'))
+  for (const [rel, body] of Object.entries(notes)) {
+    const abs = join(root, rel)
+    mkdirSync(dirname(abs), { recursive: true })
+    writeFileSync(abs, body)
+  }
+  return root
+}
+
+const NOTE = 'bug-fix/2026-01-01-a.md'
+const ARCHIVED: Record<string, string> = { [`archived/${NOTE}`]: '# Agent Note: a\n\nStatus: implemented\nArchived: 2026-01-02\n\n## Problem\n\nx\n' }
+
+function manifestOf(root: string): { artifacts: Record<string, string>; history: unknown[] } {
+  return JSON.parse(readFileSync(join(root, 'archived', SEAL_MANIFEST), 'utf8'))
+}
+
+test('空归档树：通过，且不要求 manifest 存在', () => {
+  const root = scaffold({ 'implemented/feature/2026-01-01-x.md': 'x' })
+  const { errors, sealed } = checkSeal(root)
+  assert.deepEqual(errors, [])
+  assert.equal(sealed, 0)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('--write 首次封印：manifest 不存在时封存全部条目', () => {
+  const root = scaffold(ARCHIVED)
+  const { errors, added } = writeSeal(root)
+  assert.deepEqual(errors, [])
+  assert.deepEqual(added, [NOTE])
+  assert.match(manifestOf(root).artifacts[NOTE] ?? '', /^[0-9a-f]{64}$/)
+  assert.deepEqual(checkSeal(root).errors, [])
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('--write 幂等：无新增时不改 manifest', () => {
+  const root = scaffold(ARCHIVED)
+  writeSeal(root)
+  const before = readFileSync(join(root, 'archived', SEAL_MANIFEST), 'utf8')
+  const { errors, added } = writeSeal(root)
+  assert.deepEqual(errors, [])
+  assert.deepEqual(added, [])
+  assert.equal(readFileSync(join(root, 'archived', SEAL_MANIFEST), 'utf8'), before)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('新增一篇归档后 --write 只追加，既有条目不动', () => {
+  const root = scaffold(ARCHIVED)
+  writeSeal(root)
+  const second = 'feature/2026-02-02-b.md'
+  mkdirSync(dirname(join(root, 'archived', second)), { recursive: true })
+  writeFileSync(join(root, 'archived', second), '# Agent Note: b\n\nStatus: implemented\nArchived: 2026-02-03\n')
+  const { errors, added } = writeSeal(root)
+  assert.deepEqual(errors, [])
+  assert.deepEqual(added, [second])
+  assert.equal(Object.keys(manifestOf(root).artifacts).length, 2)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('既有条目被改后 --write 报错且不写入（只追加的核心保证）', () => {
+  const root = scaffold(ARCHIVED)
+  writeSeal(root)
+  const before = readFileSync(join(root, 'archived', SEAL_MANIFEST), 'utf8')
+  writeFileSync(join(root, 'archived', NOTE), '# Agent Note: a 改过\n\nStatus: implemented\nArchived: 2026-01-02\n')
+  const { errors, added } = writeSeal(root)
+  assert.equal(errors.length, 1)
+  assert.match(errors[0] ?? '', /既有封存条目已改动/)
+  assert.deepEqual(added, [])
+  assert.equal(readFileSync(join(root, 'archived', SEAL_MANIFEST), 'utf8'), before)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('未封存 → 判红', () => {
+  const root = scaffold(ARCHIVED)
+  writeFileSync(join(root, 'archived', SEAL_MANIFEST), JSON.stringify({ version: 1, artifacts: {}, history: [] }))
+  const { errors } = checkSeal(root)
+  assert.equal(errors.length, 1)
+  assert.match(errors[0] ?? '', /未封存/)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('内容改动 → 判红', () => {
+  const root = scaffold(ARCHIVED)
+  writeSeal(root)
+  writeFileSync(join(root, 'archived', NOTE), '# Agent Note: a 改过\n\nStatus: implemented\nArchived: 2026-01-02\n')
+  const { errors } = checkSeal(root)
+  assert.equal(errors.length, 1)
+  assert.match(errors[0] ?? '', /内容已改动/)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('删除 → 判红', () => {
+  const root = scaffold(ARCHIVED)
+  writeSeal(root)
+  rmSync(join(root, 'archived', NOTE))
+  const { errors } = checkSeal(root)
+  assert.equal(errors.length, 1)
+  assert.match(errors[0] ?? '', /已删除/)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('manifest 缺失但有归档笔记 → 报整棵树未封存', () => {
+  const root = scaffold(ARCHIVED)
+  const { errors } = checkSeal(root)
+  assert.equal(errors.length, 1)
+  assert.match(errors[0] ?? '', /未封存/)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('manifest 非法 JSON → fail-closed', () => {
+  const root = scaffold(ARCHIVED)
+  writeFileSync(join(root, 'archived', SEAL_MANIFEST), '{ not json')
+  const { errors } = checkSeal(root)
+  assert.equal(errors.length, 1)
+  assert.match(errors[0] ?? '', /无法解析/)
+  assert.equal(writeSeal(root).errors.length, 1)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('--reseal 更新封印并留痕；缺理由或内容未变都拒绝', () => {
+  const root = scaffold(ARCHIVED)
+  writeSeal(root)
+  writeFileSync(join(root, 'archived', NOTE), '# Agent Note: a 修正\n\nStatus: implemented\nArchived: 2026-01-02\n')
+  assert.deepEqual(resealOne(root, NOTE, '', '2026-03-01').errors.length, 1)
+  assert.deepEqual(resealOne(root, NOTE, '首次归档时日期写错', '2026-03-01').errors, [])
+  assert.deepEqual(checkSeal(root).errors, [])
+  const m = manifestOf(root) as { history: Array<Record<string, string>> }
+  assert.equal(m.history.length, 1)
+  assert.equal(m.history[0]?.action, 'reseal')
+  assert.equal(m.history[0]?.at, '2026-03-01')
+  assert.match(m.history[0]?.from ?? '', /^[0-9a-f]{64}$/)
+  assert.match(m.history[0]?.to ?? '', /^[0-9a-f]{64}$/)
+  // 内容未变时再 reseal 是滥用，拒绝
+  assert.equal(resealOne(root, NOTE, '再来一次', '2026-03-02').errors.length, 1)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('--reseal 对未封存路径拒绝', () => {
+  const root = scaffold(ARCHIVED)
+  writeSeal(root)
+  assert.equal(resealOne(root, 'feature/2026-09-09-nope.md', '理由', '2026-03-01').errors.length, 1)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('--forget 删除条目并留痕；文件仍在时拒绝', () => {
+  const root = scaffold(ARCHIVED)
+  writeSeal(root)
+  assert.equal(forgetOne(root, NOTE, '', '2026-03-01').errors.length, 1)
+  assert.equal(forgetOne(root, NOTE, '误归档', '2026-03-01').errors.length, 1, '文件仍在时应拒绝')
+  rmSync(join(root, 'archived', NOTE))
+  assert.deepEqual(forgetOne(root, NOTE, '误归档', '2026-03-01').errors, [])
+  assert.deepEqual(checkSeal(root).errors, [])
+  const m = manifestOf(root) as { artifacts: Record<string, string>; history: Array<Record<string, string>> }
+  assert.equal(m.artifacts[NOTE], undefined)
+  assert.equal(m.history[0]?.action, 'forget')
+  rmSync(root, { recursive: true, force: true })
+})
