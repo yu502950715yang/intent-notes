@@ -80,6 +80,19 @@ const USAGE = [
   '> `## 涉及仓库` 段里只有锚点行要搬进笔记的锚点段（段头不要重复），其余事实据此重写正文。',
 ]
 
+/**
+ * 列出改动文件。空提交（`--allow-empty`、纯 merge）没有文件可列，
+ * 留下悬空冒号会被读成「内容被截断」，必须点明原因。
+ */
+function pushFiles(lines: string[], files: string[]): void {
+  if (files.length === 0) {
+    lines.push('- 改动文件：该提交没有任何文件改动（很可能是空提交），不能据此补写笔记')
+    return
+  }
+  lines.push(`- 改动文件（${files.length} 个）：`)
+  for (const f of files) lines.push(`  - \`${f}\``)
+}
+
 /** 渲染成可贴进笔记的 markdown 片段。 */
 export function renderBackfill(ctx: CommitContext, matchedNotes: string[]): string {
   const primaryBranch = ctx.branches[0]
@@ -95,8 +108,7 @@ export function renderBackfill(ctx: CommitContext, matchedNotes: string[]): stri
       `- 提交：\`${ctx.sha}\` ${ctx.subject}`,
     ]
     if (ctx.versionPrefix !== undefined) facts.push(`- 版本前缀：\`${ctx.versionPrefix}\``)
-    facts.push(`- 改动文件（${ctx.files.length} 个）：`)
-    for (const f of ctx.files) facts.push(`  - \`${f}\``)
+    pushFiles(facts, ctx.files)
     if (matchedNotes.length > 0) {
       facts.push('', '## 可能相关的既有笔记（请先查重，命中的就地更新或互链）', '')
       for (const n of matchedNotes) facts.push(`- \`${n}\``)
@@ -114,8 +126,7 @@ export function renderBackfill(ctx: CommitContext, matchedNotes: string[]): stri
   lines.push(`- 提交：\`${ctx.sha}\` ${ctx.subject}`)
   if (ctx.versionPrefix !== undefined) lines.push(`- 版本前缀：\`${ctx.versionPrefix}\``)
   lines.push(`- 包含该提交的分支：${ctx.branches.map(b => `\`${b}\``).join('、') || '（未找到）'}`)
-  lines.push(`- 改动文件（${ctx.files.length} 个）：`)
-  for (const f of ctx.files) lines.push(`  - \`${f}\``)
+  pushFiles(lines, ctx.files)
   if (matchedNotes.length > 0) {
     lines.push('', '## 可能相关的既有笔记（请先查重，命中的就地更新或互链）', '')
     for (const n of matchedNotes) lines.push(`- \`${n}\``)

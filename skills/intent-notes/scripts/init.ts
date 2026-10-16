@@ -15,7 +15,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, appendFil
 import { dirname, join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { AGENT_NOTE_CLASSES, AGENT_NOTE_LIFECYCLES, ARCHIVE_DIR } from './note-tree.ts'
-import { MARKER, detectSubRepos, renderConfig, renderGitignore } from './init-core.ts'
+import { MARKER, detectNestedRepos, detectSubRepos, renderConfig, renderGitignore } from './init-core.ts'
 
 const args = process.argv.slice(2)
 const dryRun = args.includes('--dry-run')
@@ -38,6 +38,8 @@ if (!existsSync(projectRoot)) {
 }
 
 const subRepos = detectSubRepos(projectRoot)
+// 更深层仓库只给线索、不自动纳入（理由见 init-core.ts 的 detectNestedRepos 注释）
+const nestedRepos = detectNestedRepos(projectRoot, subRepos)
 const project = projectRoot.split(/[\\/]/).filter(Boolean).pop() ?? 'project'
 
 // 本 skill 基目录：只用于读自带模板，不代表它该放在哪（放哪由 harness 的扫描根决定）
@@ -125,6 +127,12 @@ actions.push(
       ? `.gitignore 已含片段，将补 ${missingIgnore.length} 条子仓库排除：${missingIgnore.join(', ')}`
       : '.gitignore 已含 Intent Notes 段，跳过',
 )
+if (nestedRepos.length > 0) {
+  // 只提示不自动写：深层目录里可能有依赖包自带的 .git，自动纳入等于替使用者猜项目结构
+  actions.push(
+    `注意：探测到 ${nestedRepos.length} 个更深层仓库（${nestedRepos.join(', ')}），不自动纳入——请手工往 .agents/intent-notes/config.yml 的 repos 段与 .gitignore 补条目`,
+  )
+}
 
 // 写入前如实打印计划：dry-run 与真实执行走同一份清单
 console.log(dryRun ? 'init --dry-run，未做任何改动：' : 'init: 将执行以下动作：')

@@ -416,6 +416,19 @@ test('非 ASCII 文件名不被 git 八进制转义：写进笔记的必须是�
   rmSync(path, { recursive: true, force: true })
 })
 
+test('空提交的片段不留悬空冒号，并点明无法据此补写', () => {
+  const ctx = { repo: 'cloud', sha: 'abc1234', subject: 'chore: 空提交', branches: ['main'], files: [] }
+  const md = renderBackfill(ctx, [])
+  assert.doesNotMatch(md, /改动文件（0 个）：\s*$/m, `留下了悬空冒号，AI 会以为内容被截断：${md}`)
+  assert.match(md, /没有文件改动|空提交/, `未点明为什么没有文件：${md}`)
+})
+
+test('无分支路径的空提交同样不留悬空冒号', () => {
+  const ctx = { repo: 'cloud', sha: 'abc1234', subject: 'chore: 空提交', branches: [], files: [] }
+  const md = renderBackfill(ctx, [])
+  assert.doesNotMatch(md, /改动文件（0 个）：\s*$/m, `留下了悬空冒号：${md}`)
+})
+
 test('CLI：repos 条目不是独立仓库根时 exit 1，不得把上层仓库的 commit 记成子仓库', () => {
   // git 会向上寻找仓库：path 只是上层仓库里的普通目录时，cat-file 探测会命中上层仓库，
   // 渲染出的锚点行把外层 commit 记在子仓库名下——错锚点会被 AI 贴进永久笔记。

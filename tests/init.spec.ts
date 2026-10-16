@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { detectSubRepos, renderConfig, renderGitignore } from '../skills/intent-notes/scripts/init-core.ts'
+import { detectNestedRepos, detectSubRepos, renderConfig, renderGitignore } from '../skills/intent-notes/scripts/init-core.ts'
 import { parseRepoList } from '../skills/intent-notes/scripts/note-anchors.ts'
 
 const skillRoot = resolve(import.meta.dirname, '../skills/intent-notes')
@@ -52,11 +52,22 @@ test('gitignore 片段把每个子仓库都排除', () => {
 
 test('config.yml 含项目根与全部子仓库', () => {
   const text = renderConfig('demo-project', ['cloud', 'vue'])
-  assert.match(text, /^project: demo-project$/m)
+  // 值一律加引号：目录名含 `#`、`: ` 时裸值会被 YAML 当注释或映射
+  assert.match(text, /^project: "demo-project"$/m)
   // 项目根必须在内：单仓库项目下它是唯一仓库，缺了它锚点门禁对每篇笔记恒红
-  assert.match(text, /- path: \.\n\s+name: demo-project/)
-  assert.match(text, /- path: cloud\n\s+name: cloud/)
-  assert.match(text, /- path: vue\n\s+name: vue/)
+  assert.match(text, /- path: "\."\n\s+name: "demo-project"/)
+  assert.match(text, /- path: "cloud"\n\s+name: "cloud"/)
+  assert.match(text, /- path: "vue"\n\s+name: "vue"/)
+})
+
+test('目录名含 YAML 特殊字符时 config.yml 仍能被自己读回', () => {
+  const text = renderConfig('#proj: hash', ['a: b'])
+  assert.match(text, /^project: "#proj: hash"$/m, `值未加引号，YAML 会截断它：${text}`)
+  assert.deepEqual(
+    [...parseRepoList(text).entries()],
+    [['#proj: hash', '.'], ['a: b', 'a: b']],
+    '加引号后自家解析器必须仍能读回原值',
+  )
 })
 
 test('init 端到端：建目录、写 config、写 gitignore、根目录 git init', () => {
@@ -70,8 +81,8 @@ test('init 端到端：建目录、写 config、写 gitignore、根目录 git in
     }
   }
   assert.ok(existsSync(join(root, '.agents', 'intent-notes', 'config.yml')))
-  // 项目根必须出现在 repos 里，否则锚点门禁对单仓库项目恒红
-  assert.match(readFileSync(join(root, '.agents', 'intent-notes', 'config.yml'), 'utf8'), /- path: \.\n\s+name: /)
+  // 项目根必须出现在 repos 里，否则锚点门禁对单仓库项目恒红；值带引号，含 `#`/`: ` 的目录名才不会被 YAML 截断
+  assert.match(readFileSync(join(root, '.agents', 'intent-notes', 'config.yml'), 'utf8'), /- path: "\."\n\s+name: "/)
   assert.ok(existsSync(join(root, '.agents', 'notes', 'README.md')), 'notes/README.md 未创建（子仓库指针会因此悬空）')
   assert.ok(existsSync(join(root, '.git')), '项目根应已 git init')
   assert.match(readFileSync(join(root, '.gitignore'), 'utf8'), /^\/cloud\/$/m)
@@ -324,7 +335,7 @@ test('init 把 junction 子仓库写进 .gitignore 与 config.yml', () => {
     assert.match(readFileSync(join(root, '.gitignore'), 'utf8'), /^\/linked\/$/m, 'junction 子仓库未进 .gitignore')
     assert.match(
       readFileSync(join(root, '.agents', 'intent-notes', 'config.yml'), 'utf8'),
-      /- path: linked\n\s+name: linked/,
+      /- path: "linked"\n\s+name: "linked"/,
       'junction 子仓库未进 config.yml',
     )
   } finally {
@@ -417,5 +428,36 @@ test('config.yml 是符号链接时 fail-closed，不把内容写到项目外', 
   } finally {
     rmSync(root, { recursive: true, force: true })
     rmSync(outside, { recursive: true, force: true })
+  }
+})
+
+test('更深层仓库被探测到，并在计划里点明要手工补条目', () => {
+  // 只探一层是刻意的（自动猜项目结构会把依赖目录里的 .git 也当子仓库），
+  // 但「漏了却不说」等于静默不完整——bootstrap 阶段 2 的人工补条目需要一条线索
+  const root = mkdtempSync(join(tmpdir(), 'intent-notes-nested-'))
+  try {
+    mkdirSync(join(root, 'svc', 'order'), { recursive: true })
+    git(join(root, 'svc', 'order'), 'init', '-q')
+    mkdirSync(join(root, 'docs'))
+    assert.deepEqual(detectNestedRepos(root, []), ['svc/order'], '深层仓库未被探测到')
+    const r = spawnSync('node', ['skills/intent-notes/scripts/init.ts', root], { encoding: 'utf8' })
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stdout, /svc\/order/, `深层仓库被静默漏掉：\n${r.stdout}`)
+    assert.match(r.stdout, /手工/, '未点明需要手工补条目')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('第一层子仓库内部不再深挖（那是该子仓库自己的事）', () => {
+  const root = mkdtempSync(join(tmpdir(), 'intent-notes-nested-skip-'))
+  try {
+    mkdirSync(join(root, 'cloud', 'sub'), { recursive: true })
+    git(join(root, 'cloud'), 'init', '-q')
+    git(join(root, 'cloud', 'sub'), 'init', '-q')
+    assert.deepEqual(detectSubRepos(root), ['cloud'])
+    assert.deepEqual(detectNestedRepos(root, detectSubRepos(root)), [], '子仓库内部的仓库不该报给容器仓库')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
   }
 })

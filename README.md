@@ -192,7 +192,7 @@ intent-notes/
 │   ├── references/  (7)     # 格式细则、六分类判据、何时写、归档、自检、存量初始化、非代码工作目录
 │   ├── templates/   (5)     # 四种生命周期的填空模板 + notes/README.md 模板
 │   └── scripts/     (10)    # 三道门禁 + init + backfill + 5 个纯模块
-├── tests/                   # 9 个 spec（155 用例）
+├── tests/                   # 9 个 spec（160 用例）
 ├── docs/superpowers/        # 历史与当次 spec / plan（早期几份写于旧名 EvolveTrace 时，保留不改）
 ├── .superpowers/            # 开发账本（gitignored）
 └── package.json  tsconfig.json  README.md  .gitignore  .gitattributes
@@ -205,8 +205,8 @@ intent-notes/
 ## 已知限制
 
 - 部署必须**整目录复制**：`scripts/` 里的模块互相 import（如被门禁 import 的 `note-text.ts`），少一个就 `ERR_MODULE_NOT_FOUND`——fail-loud，不会静默
-- `config.yml` 的 `repos:` 段**键序不限**（`path:` / `name:` 谁先都行），**注释行任意缩进都安全**（顶格也不再截断段解析）；但**不要写行内注释**：`#` 会被当成值的一部分，那一条 path 随即判「路径不存在」
-- `detectSubRepos` 只探**一层**直接子目录；更深层的仓库需手工往 `repos:` 补条目（`init` 对已存在的 `config.yml` 跳过不覆盖，不会抹掉你的补充）。junction 形式的子仓库按目录处理，会正常进 `config.yml` 与 `.gitignore`
+- `config.yml` 的 `repos:` 段**键序不限**（`path:` / `name:` 谁先都行），**注释行任意缩进都安全**（顶格也不再截断段解析）；但**不要写行内注释**：`#` 会被当成值的一部分，那一条 path 随即判「路径不存在」（`init` 写出的值一律带引号，手工补条目时建议照样加）
+- `detectSubRepos` 只探**一层**直接子目录，但更深层的仓库**不会静默漏**：`init` 会在计划里点名（`注意：探测到 N 个更深层仓库…`），据此手工往 `repos:` 与 `.gitignore` 补条目（`init` 对已存在的 `config.yml` 跳过不覆盖，不会抹掉你的补充）。junction 形式的子仓库按目录处理，会正常进 `config.yml` 与 `.gitignore`
 - `config.yml` 的 `sources:` 段**没有任何程序消费者**（`scripts/` 下没有候选筛选程序）：它只由 `init-core.ts` 写入，供人阅读、AI 遍历筛选
 - 笔记里引用的**文件是否存在由人工自检**，锚点门禁只管仓库 / 分支 / commit（`gitTracksFile` 是预留能力，尚未接入）。路径写成 `<仓库名>:<仓库内相对路径>`，多仓库下才说得清是哪个仓库的文件
 - **门禁查不了「该写却没写」**：那是语义判断，正则做不到。靠 `AGENTS.md` 规矩 + 子仓库指针预防、口头触发兜底、`backfill` 补救
@@ -230,7 +230,7 @@ intent-notes/
 
 ```powershell
 npm install          # 仅开发需要：typescript + @types/node；仓库未提交 lockfile，且 typescript@^7.0.2 是 caret 范围，安装结果不可复现
-npm test             # node --test "tests/*.spec.ts" → 155 用例
+npm test             # node --test "tests/*.spec.ts" → 160 用例
 npm run typecheck    # tsc --noEmit（strict，19 个文件）
 ```
 
