@@ -21,7 +21,7 @@ Archived: YYYY-MM-DD
 
 ## 封印：归档不可变的机械保证
 
-归档后**永久冻结**不是一句约定——`archived/` 下每篇笔记的内容都有 SHA-256 封印存在 `archived/manifest.json` 里，由**门禁 4**（`verify-note-seal.ts`）校验，并由 `pre-commit`（见 `install-hook.ts`）在每次提交时强制。
+归档后**永久冻结**不是一句约定——`archived/` 下每篇笔记的内容都有 SHA-256 封印存在 `archived/manifest.json` 里（哈希按归一化行尾后的文本算，跨平台 checkout / clone 不会误报），由**门禁 4**（`verify-note-seal.ts`）校验。**是否装 `pre-commit`（`install-hook.ts`）由你决定**：装了也只在这个提交碰到 `archived/` 时才查封印，碰到 `.agents/notes/` 时才查结构格式，只改代码的提交零开销（与 `SKILL.md` 第六节同口径）。
 
 归档一篇笔记时必须**在同一次改动里**完成封印：
 
@@ -30,7 +30,9 @@ node "<skill-dir>/scripts/verify-note-seal.ts" "<项目根>/.agents/notes" --wri
 node "<skill-dir>/scripts/verify-note-seal.ts" "<项目根>/.agents/notes"           # 只校验
 ```
 
-**清单只追加**：`--write` 先证明既有条目一条未变，再加入新产物；任何既有条目哈希不符即整体拒绝。所以「改文件 + 重跑 `--write`」洗不白改动。
+**清单只追加**：`--write` 先证明既有条目一条未变，再加入新产物；任何既有条目哈希不符即整体拒绝。所以「改文件 + 重跑 `--write`」洗不白改动。封印进过版本控制之后，**删掉整棵 `archived/`、删掉 `manifest.json`、或把它改写成空 `artifacts` 后再跑 `--write`** 也一律判红（不留痕的重封等于没有封印）——只有 `--write --first-seal` 显式放行。
+
+封印产物要进版本控制才有意义：提交时**把 `archived/manifest.json` 与笔记一起 `git add`**（装了 hook 的话，漏 add manifest 会被直接拦下）。
 
 **要改已封存的内容**（唯一的例外通道，会留痕在 `manifest.json` 的 `history` 里）：
 
@@ -46,7 +48,7 @@ node "<skill-dir>/scripts/verify-note-seal.ts" "<notes 根>" --forget <class>/<f
 
 门禁 4 只认 `artifacts`：`--reseal` 把哈希更新为新值，`--forget` 删掉条目，`history` 仅供审计、不参与判定——否则「有人回滚了 manifest 而文件是新内容」这类真实的不一致也会被放行。
 
-**存量项目首次启用**：项目里已有归档笔记时，先跑一次 `--write` 把整棵树封上（见 `bootstrap-existing-project.md`）。
+**存量项目首次启用**：项目里已有归档笔记、且版本控制里**从没有过** `archived/manifest.json` 时，先跑一次 `--write` 把整棵树封上（见 `bootstrap-existing-project.md`）。若版本控制里有过 manifest 而磁盘上没有，说明封印是被删的：默认判红，确认要重新起封印再补 `--first-seal`。notes 根不在 git 仓库内（非代码工作目录形态）时探测不到 HEAD，退化为按磁盘判断。
 
 ## 删除，而不是归档
 

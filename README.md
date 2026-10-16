@@ -145,11 +145,11 @@ Status: implemented
 | 1 结构 | `verify-note-tree.ts` | **notes 根**（省略取 `<cwd>/.agents/notes`） | 生命周期与分类闭集、目录深度、文件名形态、禁 `INDEX.md`、笔记间相对链接断链；notes 根与生命周期根**只拒绝其他 `.md`**（白名单外的 `.md` 判红），非 `.md` 文件目前静默通过；符号链接 / junction / 特殊文件报「无法校验（符号链接/junction/特殊文件）」而非静默跳过；空树仍退 0；`archived/` 整篇豁免链接校验（归档已冻结，不再跟着目标改名） |
 | 2 格式 | `verify-note-format.ts` | **notes 根** | 头三行、`Status` 与目录一致、`## Problem` 打头、必备节齐全（`rejected` 与 `proposed` 同骨架）、`implemented` / `archived` 禁提案用语、`Alternatives` 必写 |
 | 3 锚点 | `verify-note-anchors.ts` | **项目根**（省略取 `cwd`） | 仓库 / 分支 / commit **实时查 git**：分支不存在、commit 不在声明的分支上、声明的路径不是独立仓库根，都报错；`archived/` 整篇豁免；0 篇时与门禁 1/2 同口径，点明「未发现任何笔记」 |
-| 4 封印 | `verify-note-seal.ts` | **notes 根** | `archived/` 下每篇与 `archived/manifest.json` 的 SHA-256 是否一致：未封存 / 内容已改动 / 已删除都判红。清单**只追加**，`--write` 只加新产物；改内容要 `--reseal --reason`，撤销误归档要 `--forget --reason`。空归档树退 0 |
+| 4 封印 | `verify-note-seal.ts` | **notes 根** | `archived/` 下每篇与 `archived/manifest.json` 的 SHA-256 是否一致（哈希按**归一化行尾**后的文本算，普通 checkout / clone 不会误报）：未封存 / 内容已改动 / 已删除都判红。清单**只追加**，`--write` 只加新产物；改内容要 `--reseal --reason`，撤销误归档要 `--forget --reason`。空归档树退 0；但 HEAD 里曾有过 `manifest.json` 而磁盘上没有（整树删除 / 删掉 manifest 再重封）同样判红，重新起封印要显式 `--write --first-seal`。**`manifest.json` 必须与笔记一起 `git add`** |
 
 四条都是 **fail-closed**：读不到、查不到一律报错，绝不静默放绿。
 
-**门禁 1 / 2 / 4 接 notes 根，门禁 3 与 `install-hook.ts` 接项目根——参数语义不同是这里最容易踩的坑**（`audit-notes.ts` 也接 notes 根，但它只读、不判红）。最不会错的用法是 `cd` 到项目根后不带参数。
+**门禁 1 / 2 / 4 接 notes 根，门禁 3 与 `install-hook.ts` 接项目根——参数语义不同是这里最容易踩的坑**（`audit-notes.ts` 也接 notes 根，它只读、不写文件，但笔记树结构有问题时按门禁 1 的口径报错退非 0）。最不会错的用法是 `cd` 到项目根后不带参数。
 
 **什么时候跑**：每次会话开始跑门禁 3（`SKILL.md` 第零节）；每次写完笔记跑门禁 1、2、4。门禁 3 只管锚点，结构与格式错误只能靠门禁 1 / 2——装了 `install-hook.ts` 后由 `pre-commit` 在提交时按路径自动跑门禁 4 / 1 / 2（见「命令速查」）。日常动作已写进 `skills/intent-notes/SKILL.md` 第六节与 `references/quality-gate.md` 第 0 步。
 
@@ -163,8 +163,8 @@ node <skill>/scripts/verify-note-tree.ts    [notes 根]  # 门禁 1：结构
 node <skill>/scripts/verify-note-format.ts  [notes 根]  # 门禁 2：格式
 node <skill>/scripts/verify-note-anchors.ts [项目根]    # 门禁 3：锚点
 node <skill>/scripts/backfill.ts <commit> [项目根]      # 漏写补救
-node <skill>/scripts/verify-note-seal.ts   [notes 根] [--write | --reseal <rel> --reason <文本> | --forget <rel> --reason <文本>]
-node <skill>/scripts/audit-notes.ts        [notes 根]   # 归档候选清单（只读，不判红）
+node <skill>/scripts/verify-note-seal.ts   [notes 根] [--write [--first-seal] | --reseal <rel> --reason <文本> | --forget <rel> --reason <文本>]
+node <skill>/scripts/audit-notes.ts        [notes 根]   # 归档候选清单（只读、不写文件；树结构有问题时退 1）
 node <skill>/scripts/install-hook.ts       <项目根> [--dry-run] [--force]  # 装 pre-commit
 ```
 
@@ -179,7 +179,7 @@ node <skill>/scripts/install-hook.ts       <项目根> [--dry-run] [--force]  # 
 | 1 建骨架 | 程序 | `init`：探测、建目录、写 config 与 notes/README（即上文快速开始的第一步、第二步） |
 | 2 重建 `AGENTS.md` | AI + 人确认 | 提取当前生效的规矩、修正漂移、每条挂链接（**最关键**） |
 | 3 选择性收割 | AI 遍历筛 + AI 判断 | 从既有 specs / plans / sdd 里挑出含取舍与根因分析的写成笔记。判据是**它还会不会指导未来的改动**，预期产出远少于文档总数 |
-| 4 首次封印 | 程序 | 对存量 `archived/` 跑一次 `verify-note-seal.ts … --write`，把整棵归档树记进 `archived/manifest.json`——**必须在开始用 hook 之前做** |
+| 4 首次封印 | 程序 | 对存量 `archived/` 跑一次 `verify-note-seal.ts … --write`，把整棵归档树记进 `archived/manifest.json`——**必须在开始用 hook 之前做**。版本控制里从没有过 `manifest.json` 的项目走这条；若有，说明封印已经被删/被重置，要显式加 `--first-seal` |
 | 5 转入日常 | AI | 之后所有命中清单的改动顺手写笔记。**初始化是一次性的，运行是持续的** |
 
 阶段 2 还有一件 polyrepo 必需的收尾：agent 在**每个子仓库**的 `AGENT.md` 追加一行指针——否则规矩只对「在项目根工作的会话」生效，而对真正干活的子仓库会话失效：
@@ -197,7 +197,7 @@ intent-notes/
 │   ├── references/  (7)     # 格式细则、六分类判据、何时写、归档、自检、存量初始化、非代码工作目录
 │   ├── templates/   (5)     # 四种生命周期的填空模板 + notes/README.md 模板
 │   └── scripts/     (15)    # 四道门禁 + init + backfill + audit + install-hook + 7 个纯模块
-├── tests/                   # 14 个 spec（209 用例）
+├── tests/                   # 15 个 spec（231 用例，含真实 git 仓库的 hook 端到端）
 ├── docs/superpowers/        # 历史与当次 spec / plan（早期几份写于旧名 EvolveTrace 时，保留不改）
 ├── .superpowers/            # 开发账本（gitignored）
 └── package.json  tsconfig.json  README.md  .gitignore  .gitattributes
@@ -220,6 +220,9 @@ intent-notes/
 - **非代码工作目录要求那台机器有 git**，且目录在**本地磁盘**（同步盘会损坏 `.git`）；git 缺失时脚本 fail-closed 报错，**不会**自行安装
 - **skill 副本会随 `.agents/` 进目标项目的版本控制**（`init` 的 `.gitignore` 片段只排除探测到的子仓库）：想让团队共享就照常提交；不想提交就自行把 `.agents/skills/` 加进 `.gitignore`
 - **`--no-verify` 能绕过 pre-commit 闸门**：它是默认路径纠偏，不是安全边界；「该写却没写」也查不了（语义判断）
+- **整树删除 / manifest 重置靠「HEAD 里是否有过 manifest」识别**：`git rm -r .agents/notes/archived` 或删掉 / 清空 `manifest.json` 后再跑 `--write`，门禁 4 会因 HEAD 里封印过而判红（否则被篡改的字节会被无声重封、`history` 也是空的）。确认要重新起封印才用 `--write --first-seal`。探测走 git，**notes 根不在 git 仓库内或机器上没有 git 时退化为「从未封印」**，此时这一层保护不生效（门禁 1/2/4 的其余校验照常）
+- **`install-hook` 在配置了 `core.hooksPath` 的项目里显式拒绝**：husky / lefthook / pre-commit 框架会把钩子目录指到别处（如 `.husky`），此时写 `.git/hooks/` 只会静默空转、而它却报「已安装」。请装到该目录或用框架自己的机制接入，也可以先 `git config --unset core.hooksPath`
+- **`manifest.json` 要与笔记一起 `git add`**：hook 会在门禁 4 通过后再查一次 manifest 相对 index 是否干净，没 add 就退 1——否则本次 commit 里的 manifest 与笔记不符，新 clone 一律判红（`git diff --quiet` 看不出未跟踪的新 manifest，所以另查一次 `git ls-files`）
 - **「只有 implemented 能归档」检测不了**：从 `proposed/` 直接移进 `archived/` 并同时改好 `Status` 与骨架，门禁会全绿——要检测只能翻 git 历史，对存量归档无效，本 skill 不做
 - **`install-hook` 在 worktree / 子模块项目里显式拒绝**：那些仓库的 `.git` 是 gitdir 指针文件，钩子不在那里。但 git 的钩子取自公共 git 目录、各 worktree 共享，所以**在主检出装一次即可覆盖所有 worktree**——报错信息里也给了这个下一步（公共 git 目录的 `hooks/`）
 
@@ -238,8 +241,8 @@ intent-notes/
 
 ```powershell
 npm install          # 仅开发需要：typescript + @types/node；仓库未提交 lockfile，且 typescript@^7.0.2 是 caret 范围，安装结果不可复现
-npm test             # node --test "tests/*.spec.ts" → 209 用例
-npm run typecheck    # tsc --noEmit（strict，29 个文件）
+npm test             # node --test "tests/*.spec.ts" → 231 用例
+npm run typecheck    # tsc --noEmit（strict，30 个文件）
 ```
 
 - 运行时**零依赖**：`node --test` 与四道门禁都不需要 `node_modules`
@@ -248,4 +251,4 @@ npm run typecheck    # tsc --noEmit（strict，29 个文件）
 - `package.json` 不再提供 `verify` 脚本：本仓库自身不是笔记项目（没有 `.agents/notes`），该脚本命令写死相对本仓库根解析的路径，没有任何成功路径。四道门禁请在**已初始化项目的根目录**按上文「命令速查」用 `node <skill>/scripts/verify-note-*.ts` 执行
 - 改 skill 的流程：**先要一条失败的测试（RED → GREEN）**；改完跑 `npm test` + `npm run typecheck`
 
-本项目以 [MIT](LICENSE) 许可发布。门禁 1 / 2 移植改造自 DeepSeek Harness（MIT, Copyright (c) 2026 DeepSeek），门禁 3 的跨仓库锚点校验、`init`、`backfill` 为本项目新写。
+本项目以 [MIT](LICENSE) 许可发布。门禁 1 / 2 与门禁 4 的 `seal-core.ts`（SHA-256 manifest 与只追加校验）移植改造自 DeepSeek Harness（MIT, Copyright (c) 2026 DeepSeek），门禁 3 的跨仓库锚点校验、`init`、`backfill`、`audit-notes.ts`、`install-hook.ts` 为本项目新写。

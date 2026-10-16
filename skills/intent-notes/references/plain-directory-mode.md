@@ -76,7 +76,7 @@ git -C "<工作目录>" commit -m "chore: 建立 Agent Notes 骨架"
    node "<skill-dir>/scripts/verify-note-seal.ts"   "<工作目录>/.agents/notes"   # 门禁 4：归档封印
    ```
 
-   参数语义：门禁 1 / 2 / 4 接 **notes 根**（`<工作目录>/.agents/notes`），门禁 3 与 `install-hook.ts` 接**项目根**（门禁 3 即 `SKILL.md` 第零节那条 `verify-note-anchors.ts`）；第零节的 `audit-notes.ts` 同样接 notes 根，但它只读、不判红。红了就地修完再提交笔记。
+   参数语义：门禁 1 / 2 / 4 接 **notes 根**（`<工作目录>/.agents/notes`），门禁 3 与 `install-hook.ts` 接**项目根**（门禁 3 即 `SKILL.md` 第零节那条 `verify-note-anchors.ts`）；第零节的 `audit-notes.ts` 同样接 notes 根，它只读、不写文件，但笔记树结构有问题时按门禁 1 的口径报错退非 0。红了就地修完再提交笔记；归档后跑 `--write` 时，`archived/manifest.json` 要与被归档的笔记**一起提交**。
 8. 提交笔记，**产物先提交、笔记后提交**（笔记的 commit 锚点只能指向已存在的 commit）：
 
    ```bash

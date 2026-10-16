@@ -74,7 +74,7 @@
 }
 ```
 
-**哈希对象**：笔记文件的原始字节（UTF-8 原文，含行尾与结尾换行）。`manifest.json` 自身不参与封存。
+**哈希对象**：归一化行尾（CRLF / CR → LF）后的文本，BOM 亦剥除——哈希按字节算会让 `core.autocrlf=true` 的机器上普通 checkout / clone 出的 CRLF 文件全部误报「内容已改动」。`manifest.json` 自身不参与封存。
 
 **只追加**：这是整个机制成立的前提。任何允许「重录既有条目」的设计都会让「改文件 + 重录」变成自洽的合法操作，manifest 随即失去意义。
 
@@ -86,6 +86,7 @@
 | 哈希不符 | `内容已改动`——一律判红，只有 `--reseal` 能更新封印 |
 | manifest 有、磁盘无 | `已删除`——一律判红，只有 `--forget` 能撤销条目 |
 | `manifest.json` 缺失但有归档笔记 | 报「整棵归档树未封存」，并提示首次封印命令 |
+| `manifest.json` 缺失（或不再记录任何磁盘产物）而 **HEAD 里曾有过 manifest** | 判红——只看磁盘分不清「从来没有过归档」与「归档被删光了」；确要重新起封印须显式 `--write --first-seal`。`headHasSeal` 由 CLI 层用 `git cat-file -e HEAD:<相对路径>` 算出后注入 `seal-core.ts`（纯模块不 spawn 子进程）；探测不到（非 git 仓库 / 无 git）按 false 处理 |
 
 **`--write`（封印入口）**：
 
@@ -106,13 +107,14 @@
 
 **新增 `scripts/install-hook.ts`**，用法 `node scripts/install-hook.ts <项目根> [--dry-run] [--force]`：
 
-1. 校验 `<项目根>/.git` 存在，否则报「先跑 init」并退出
-2. 目标 `<项目根>/.git/hooks/pre-commit`
+1. 校验 `<项目根>/.git` 存在，否则报「先跑 init」并退出；`.git` 是 gitdir 指针文件（worktree / 子模块）时拒绝（`statSync` 跟随链接，指向真实目录的链接放行）
+2. `git config --get core.hooksPath` 非空 → 拒绝：husky / lefthook / pre-commit 框架会把钩子目录指到别处，写 `.git/hooks/` 只会静默空转
+3. 目标 `<项目根>/.git/hooks/pre-commit`（`lstatSync` 判类型，任何链接/特殊文件一律拒绝，避免沿悬空链接写到项目外）
    - 不存在 → 写入（权限 `0o755`）
    - 已存在且内容与本次生成的**完全一致** → 报「已安装」，退 0（幂等，可反复跑）
    - 已存在且内容不同 → **拒绝写入**，打印手动接入片段与 `--force` 提示
-3. 脚本路径：install-hook 据自身位置（`import.meta.dirname`）算出 skill 相对项目根的路径。相对路径不以 `..` 开头时写相对路径（可随项目迁移），否则写绝对路径
-4. `--dry-run` 只打印计划，不落盘——与 `init.ts` 的既有约定一致
+4. 脚本路径：install-hook 据自身位置（`import.meta.dirname`）算出 skill 相对项目根的路径。相对路径不以 `..` 开头时写相对路径（可随项目迁移），否则写绝对路径；赋值用**单引号串**（`$` 与反引号在 shell 里不展开）
+5. `--dry-run` 只打印计划，不落盘——与 `init.ts` 的既有约定一致
 
 **生成的 hook 内容**（POSIX sh，Git for Windows 亦由 sh 执行）：
 
@@ -121,7 +123,7 @@
 # Intent Notes pre-commit：笔记闸门（由 install-hook.ts 生成）
 # 按路径触发：未触碰 .agents/notes/ 时零开销。
 set -e
-SKILL="<相对或绝对路径>"
+SKILL='<相对或绝对路径>'
 NOTES=".agents/notes"
 
 if ! command -v node >/dev/null 2>&1; then
@@ -131,6 +133,12 @@ fi
 
 if ! git diff --cached --quiet -- "$NOTES/archived"; then
   node "$SKILL/scripts/verify-note-seal.ts" "$NOTES" || exit 1
+  # 封印清单必须随本次提交一起进 index，否则 commit 里的 manifest 与笔记不符，新 clone 一律判红
+  MANIFEST="$NOTES/archived/manifest.json"
+  if ! git diff --quiet -- "$MANIFEST" || { [ -f "$MANIFEST" ] && ! git ls-files --error-unmatch -- "$MANIFEST" >/dev/null 2>&1; }; then
+    echo "intent-notes: archived/manifest.json 未 git add，封印不会随本次提交生效" >&2
+    exit 1
+  fi
 fi
 
 if ! git diff --cached --quiet -- "$NOTES"; then
@@ -138,6 +146,8 @@ if ! git diff --cached --quiet -- "$NOTES"; then
   node "$SKILL/scripts/verify-note-format.ts" "$NOTES" || exit 1
 fi
 ```
+
+门禁 4 校验的是**工作树**，而 commit 提交的是 index——所以 hook 必须在门禁 4 通过后补查 manifest 相对 index 是否干净；`git diff` 看不见未跟踪的新 manifest，因此再加一次 `git ls-files --error-unmatch`。
 
 `git diff --cached --quiet -- <path>` 的退出码：0 = 无差异，非 0 = 有差异或出错。用 `if !` 判定，出错时偏向执行门禁（fail-safe）。不依赖 `grep`/`echo` 之外的工具，也不依赖 Node 以外的运行时。
 
@@ -159,7 +169,7 @@ fi
 
 **新增 `scripts/audit-notes.ts`**，用法 `node scripts/audit-notes.ts [notes 根]`。
 
-**只读**：不判红、不写文件，退出码 0（参数或 notes 根不可读时才非 0）。它**不是门禁**，不进 hook、不进 CI。
+**只读**：不写文件；笔记树结构有问题时按门禁 1 的口径报错退非 0，其余情况退 0。它**不是门禁**，不进 hook、不进 CI。
 
 **输出**：
 

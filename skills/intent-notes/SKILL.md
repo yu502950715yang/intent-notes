@@ -16,7 +16,7 @@ description: 在交付项目或工作目录里留下并维护决策笔记（Agen
 1. `git status --short` —— 有未提交改动，说明产物被改过，必须走第一节判定
 2. `git log --oneline -5` —— 有 agent 未记录的新提交，同样走第一节判定
 3. `node "<skill-dir>/scripts/verify-note-anchors.ts" "<工作目录>"` —— 红了先按报错处理，再谈本次任务
-4. `node "<skill-dir>/scripts/audit-notes.ts" "<工作目录>/.agents/notes"` —— 打印 `implemented/` 候选清单（存续天数、字数、入链数），当场过一遍：有该归档的就归档并封印
+4. `node "<skill-dir>/scripts/audit-notes.ts" "<工作目录>/.agents/notes"` —— 打印 `implemented/` 候选清单（存续天数、字数、入链数），当场过一遍：有该归档的就归档并封印。它只读、不写文件；但笔记树结构有问题时按门禁 1 的口径报错退非 0
 
 门禁不会自己启动：没有这一步，「该写却没写」没有任何机制能发现。
 
@@ -83,7 +83,7 @@ node "<skill-dir>/scripts/verify-note-format.ts" "<项目根>/.agents/notes"   #
 node "<skill-dir>/scripts/verify-note-seal.ts"   "<项目根>/.agents/notes"   # 门禁 4：归档封印
 ```
 
-**归档了就必须封印**：把笔记移进 `archived/` 后立刻跑 `verify-note-seal.ts … --write`，否则门禁 4 会报「未封存」。
+**归档了就必须封印**：把笔记移进 `archived/` 后立刻跑 `verify-note-seal.ts … --write`，否则门禁 4 会报「未封存」；**`archived/manifest.json` 要与笔记一起 `git add`**（hook 会单独查这一条，漏了就退 1）。
 
 **机械闸门（推荐装一次）**：`node "<skill-dir>/scripts/install-hook.ts" "<项目根>"` 会把门禁 4 / 1 / 2 装进 `.git/hooks/pre-commit`——归档有变就查封印，笔记有变就查结构格式，只改代码的 commit 零开销。装了它，「忘了跑门禁」就不再依赖记性。
 
