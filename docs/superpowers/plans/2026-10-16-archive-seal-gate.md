@@ -166,7 +166,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { ARCHIVE_DIR, walkAgentNoteTree } from './note-tree.ts'
 import { isIndentedCodeBlock, localLinkTargets } from './note-links.ts'
-import { toLines } from './note-text.ts'
+import { fenceAwareLines, toLines } from './note-text.ts'
 ```
 
 2. 删除第 18-51 行（`isIndentedCodeBlock` 与 `localLinkTargets` 的**全部**本地定义，含注释）。
