@@ -1,10 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs'
+import {
+  mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync, symlinkSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import {
-  checkSeal, forgetOne, readManifest, resealOne, writeSeal, SEAL_MANIFEST,
+  checkSeal, forgetOne, listSealedFiles, readManifest, resealOne, writeSeal, SEAL_MANIFEST,
 } from '../skills/intent-notes/scripts/seal-core.ts'
 
 /** 建一棵 notes 树，notes 为 相对路径 -> 文件内容。 */
@@ -163,5 +165,34 @@ test('--forget 删除条目并留痕；文件仍在时拒绝', () => {
   const m = manifestOf(root) as { artifacts: Record<string, string>; history: Array<Record<string, string>> }
   assert.equal(m.artifacts[NOTE], undefined)
   assert.equal(m.history[0]?.action, 'forget')
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('archived/ 下的目录型链接 → 报错不跟随，绝不封印扫描根之外的笔记', (t) => {
+  const root = scaffold(ARCHIVED)
+  // 链接指向 archived/ 之外的目录，用来证明「不跟随」：跟随会把外部笔记一并卷进封印
+  const outside = join(root, 'outside')
+  mkdirSync(outside, { recursive: true })
+  writeFileSync(join(outside, '2026-01-01-outside.md'), '# 外部笔记\n')
+  const link = join(root, 'archived', 'linked')
+  try {
+    symlinkSync(outside, link, process.platform === 'win32' ? 'junction' : 'dir')
+  } catch (e) {
+    t.skip(`本机无法创建目录型链接（${(e as NodeJS.ErrnoException).code}）`)
+    rmSync(root, { recursive: true, force: true })
+    return
+  }
+  const { files, errors } = listSealedFiles(root)
+  assert.deepEqual(files, [NOTE], '链接不得被跟随')
+  assert.equal(errors.length, 1)
+  assert.match(errors[0] ?? '', /无法校验（符号链接\/junction\/特殊文件）/)
+  assert.match(errors[0] ?? '', /^seal: archived\/linked — /)
+  // 与门禁 1 同口径：链接存在即判红，--write 也不得放行
+  assert.match(checkSeal(root).errors.join('\n'), /无法校验（符号链接\/junction\/特殊文件）/)
+  const { errors: writeErrors, added } = writeSeal(root)
+  assert.equal(writeErrors.length, 1)
+  assert.deepEqual(added, [])
+  assert.equal(existsSync(join(root, 'archived', SEAL_MANIFEST)), false, '--write 不得落盘')
+  rmSync(link, { recursive: true, force: true })
   rmSync(root, { recursive: true, force: true })
 })
