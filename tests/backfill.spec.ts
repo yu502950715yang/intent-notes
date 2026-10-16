@@ -255,7 +255,7 @@ test('backfill.ts 保持纯 CLI：不得再导出任何东西', () => {
   assert.doesNotMatch(src, /^export /m, 'backfill.ts 又导出了东西：纯逻辑应留在 backfill-core.ts')
 })
 
-test('CLI：笔记树结构有问题时打 stderr 告警但仍 exit 0', () => {
+test('CLI：笔记树结构有问题时 fail-closed，不静默漏报相关笔记', () => {
   const root = mkdtempSync(join(tmpdir(), 'intent-notes-bf-warn-'))
   const sub = join(root, 'cloud')
   mkdirSync(sub, { recursive: true })
@@ -274,9 +274,60 @@ test('CLI：笔记树结构有问题时打 stderr 告警但仍 exit 0', () => {
   writeFileSync(join(root, '.agents', 'notes', 'INDEX.md'), '# idx\n')
 
   const r = spawnSync('node', ['skills/intent-notes/scripts/backfill.ts', sha, root], { encoding: 'utf8' })
-  assert.equal(r.status, 0, r.stderr)
+  // 结构错误会漏报「疑似相关笔记」，静默放过等于诱导 AI 新建重复笔记
+  assert.equal(r.status, 1, `结构错误被静默放过：${r.stdout}`)
   assert.match(r.stderr, /笔记树结构有问题/)
+  assert.equal(r.stdout.trim(), '', '结构不可信时不该产出片段')
   rmSync(root, { recursive: true, force: true })
+})
+
+test('CLI：容器根尚未首次提交时，子仓库的 commit 仍可补写', () => {
+  // 笔记可以先于容器根的首次提交存在；此时 path: . 不是 git 仓库，不该整体阻断 backfill
+  const root = mkdtempSync(join(tmpdir(), 'intent-notes-bf-container-'))
+  const sub = join(root, 'cloud')
+  mkdirSync(sub, { recursive: true })
+  git(sub, 'init', '-q', '-b', 'v140')
+  git(sub, 'config', 'user.email', 't@example.com')
+  git(sub, 'config', 'user.name', 't')
+  writeFileSync(join(sub, 'a.txt'), 'x\n')
+  git(sub, 'add', '.')
+  git(sub, 'commit', '-q', '-m', 'v140：某改动')
+  const sha = git(sub, 'rev-parse', 'HEAD')
+  mkdirSync(join(root, '.agents', 'intent-notes'), { recursive: true })
+  writeFileSync(
+    join(root, '.agents', 'intent-notes', 'config.yml'),
+    'project: demo\nrepos:\n  - path: .\n    name: demo\n  - path: cloud\n    name: cloud\n',
+  )
+
+  const r = spawnSync('node', ['skills/intent-notes/scripts/backfill.ts', sha, root], { encoding: 'utf8' })
+  assert.equal(r.status, 0, `容器根不是仓库时 backfill 整体失败：${r.stderr}`)
+  assert.match(r.stdout, /- `cloud` 分支 `v140`/)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('CLI：容器根落在上层仓库内时仍 exit 1（豁免只覆盖「完全不在仓库内」）', () => {
+  const outer = mkdtempSync(join(tmpdir(), 'intent-notes-bf-outer-'))
+  const root = join(outer, 'proj')
+  const sub = join(root, 'cloud')
+  mkdirSync(sub, { recursive: true })
+  git(outer, 'init', '-q', '-b', 'main')
+  git(sub, 'init', '-q', '-b', 'v140')
+  git(sub, 'config', 'user.email', 't@example.com')
+  git(sub, 'config', 'user.name', 't')
+  writeFileSync(join(sub, 'a.txt'), 'x\n')
+  git(sub, 'add', '.')
+  git(sub, 'commit', '-q', '-m', 'v140：某改动')
+  const sha = git(sub, 'rev-parse', 'HEAD')
+  mkdirSync(join(root, '.agents', 'intent-notes'), { recursive: true })
+  writeFileSync(
+    join(root, '.agents', 'intent-notes', 'config.yml'),
+    'project: demo\nrepos:\n  - path: .\n    name: demo\n  - path: cloud\n    name: cloud\n',
+  )
+
+  const r = spawnSync('node', ['skills/intent-notes/scripts/backfill.ts', sha, root], { encoding: 'utf8' })
+  assert.equal(r.status, 1, `上层仓库的 commit 被记到了 demo 名下：${r.stdout}`)
+  assert.match(r.stderr, /不是独立仓库根/, r.stderr)
+  rmSync(outer, { recursive: true, force: true })
 })
 
 test('CLI：找不到 commit 时 exit 1 且不产出片段', () => {

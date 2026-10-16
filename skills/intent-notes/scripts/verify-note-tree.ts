@@ -9,7 +9,7 @@
  */
 import { readFileSync, existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { walkAgentNoteTree } from './note-tree.ts'
+import { ARCHIVE_DIR, walkAgentNoteTree } from './note-tree.ts'
 import { fenceAwareLines, toLines } from './note-text.ts'
 
 const root = resolve(process.argv[2] ?? join(process.cwd(), '.agents', 'notes'))
@@ -51,6 +51,8 @@ function localLinkTargets(line: string): string[] {
 }
 
 for (const note of notes) {
+  // 归档笔记已冻结（不再编辑、移动、重格式化）：与门禁 3 同口径，链接不再实时校验
+  if (note.lifecycle === ARCHIVE_DIR) continue
   const abs = join(root, note.rel)
   let text: string
   try {

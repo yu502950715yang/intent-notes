@@ -503,3 +503,36 @@ test('段头写成制表符分隔仍是 ## 涉及仓库 段', () => {
   assert.deepEqual(errors, [], `制表符段头被判缺少段：${errors.join(' | ')}`)
   rmSync(repo.path, { recursive: true, force: true })
 })
+
+test('CLI：config.yml 不可读时给出受控报错，不抛裸栈', () => {
+  const repo = makeRepo('main')
+  try {
+    mkdirSync(join(repo.path, '.agents', 'notes'), { recursive: true })
+    // 用目录冒充 config.yml：readFileSync 会抛 EISDIR
+    mkdirSync(join(repo.path, '.agents', 'intent-notes', 'config.yml'), { recursive: true })
+    const r = runAnchorGate(repo.path)
+    assert.equal(r.code, 1)
+    assert.match(r.stderr, /不可读/, `没有点明读不到什么：${r.stderr}`)
+    assert.doesNotMatch(r.stderr, /node:internal|at readFileSync/, '不该把 Node 裸栈当报错')
+  } finally {
+    rmSync(repo.path, { recursive: true, force: true })
+  }
+})
+
+test('CLI：0 篇笔记时摘要点明未发现笔记，不自称锚点全部有效', () => {
+  const repo = makeRepo('main')
+  try {
+    mkdirSync(join(repo.path, '.agents', 'notes'), { recursive: true })
+    mkdirSync(join(repo.path, '.agents', 'intent-notes'), { recursive: true })
+    writeFileSync(
+      join(repo.path, '.agents', 'intent-notes', 'config.yml'),
+      'project: t\nrepos:\n  - path: .\n    name: t\n',
+    )
+    const { code, stdout } = runAnchorGate(repo.path)
+    assert.equal(code, 0, stdout)
+    assert.match(stdout, /未发现任何笔记/, `0 篇时的摘要与门禁 1/2 不同口径：${stdout}`)
+    assert.doesNotMatch(stdout, /锚点全部有效/, '0 篇时不该断言锚点有效')
+  } finally {
+    rmSync(repo.path, { recursive: true, force: true })
+  }
+})

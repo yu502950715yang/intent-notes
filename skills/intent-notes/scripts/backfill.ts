@@ -35,8 +35,10 @@ if (!existsSync(configPath)) {
 const repos = new Map<string, string>()
 for (const [name, rel] of parseRepoList(readFileSync(configPath, 'utf8'))) repos.set(name, resolve(projectRoot, rel))
 // 每个 path 必须是独立仓库根：git 会向上寻找仓库，path 只是上层仓库里的普通目录时
-// cat-file 会命中上层仓库，渲染出的锚点行把外层 commit 记在子仓库名下（错锚点进永久笔记）
-const rootIssues = checkRepoRoots(repos)
+// cat-file 会命中上层仓库，渲染出的锚点行把外层 commit 记在子仓库名下（错锚点进永久笔记）。
+// 例外只有容器根自身「完全不在任何仓库内」：笔记可以先于首次提交存在，那不算配置错。
+const containerNames = new Set([...repos].filter(([, path]) => path === projectRoot).map(([name]) => name))
+const rootIssues = checkRepoRoots(repos, { allowNonRepo: containerNames })
 if (rootIssues.length > 0) {
   console.error('backfill: 仓库清单预检失败（每个 path 必须是独立仓库根）：')
   for (const i of rootIssues) console.error(`  repos: ${i.name}（${i.path}）— ${i.reason}`)
@@ -70,8 +72,11 @@ if (existsSync(notesRoot)) {
   const { notes, errors } = walkAgentNoteTree(notesRoot)
   // note-tree 规定调用方把非空 errors 视为致命：静默会漏报相关笔记，诱导 AI 新建重复笔记
   if (errors.length > 0) {
+    // note-tree 的契约是「调用方把非空 errors 视为致命」：结构不可信时相关笔记会漏报，
+    // 照常产出片段等于诱导 AI 新建重复笔记
     console.error('backfill: 笔记树结构有问题，可能漏报相关笔记：')
     for (const e of errors) console.error(`  ${e}`)
+    process.exit(1)
   }
   // basename 命中是提示性启发式，只要求命中处两侧都不是名字字符——
   // 否则 `data.ts` 会因为含子串 `a.ts` 而误报。不给 index.ts/package.json 这类通用名加白名单：

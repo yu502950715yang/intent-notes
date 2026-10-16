@@ -210,3 +210,25 @@ test('行内代码、缩进代码块与 HTML 注释里的示例链接不算真�
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('archived 笔记的相对链接豁免（归档已冻结，不再跟着目标改名）', () => {
+  // 归档承诺「不再编辑、移动、重格式化」；若链接仍被校验，目标改名后只能靠编辑归档笔记解红
+  const root = scaffold({
+    'archived/feature/2026-01-01-a.md': [
+      '# Agent Note: t',
+      '',
+      'Status: implemented',
+      'Archived: 2026-01-02',
+      '',
+      '## Problem',
+      '',
+      '见 [旧文档](../../docs/old.md)。',
+    ].join('\n'),
+  })
+  try {
+    const { code, stderr } = runTreeGate(root)
+    assert.equal(code, 0, `归档笔记的断链被判红：${stderr}`)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})

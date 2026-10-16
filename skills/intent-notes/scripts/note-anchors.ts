@@ -233,7 +233,13 @@ function canonicalPath(p: string): string {
  * commit 判为有效，锚点事实层随即假绿（子仓库被删掉 .git、人工补条目补错层级都会这样）。
  * 同一次预检吃掉四义诊断：git 不在 PATH / 路径不存在 / 不是仓库 / 属于上层仓库。
  */
-export function checkRepoRoots(repos: Map<string, string>): RepoRootIssue[] {
+/** `checkRepoRoots` 的可选放宽条件。 */
+export interface CheckRepoRootsOptions {
+  /** 允许「不在任何 git 仓库内」的仓库名：容器根可以先于首次提交存在（见 backfill）。 */
+  allowNonRepo?: ReadonlySet<string>
+}
+
+export function checkRepoRoots(repos: Map<string, string>, options: CheckRepoRootsOptions = {}): RepoRootIssue[] {
   const issues: RepoRootIssue[] = []
   for (const [name, path] of repos) {
     let isDir = false
@@ -250,6 +256,8 @@ export function checkRepoRoots(repos: Map<string, string>): RepoRootIssue[] {
     }
     const top = git(path, ['rev-parse', '--show-toplevel'])
     if (!top.ok) {
+      // git 不可用（top.error）不豁免：那是环境问题，不是「容器根还没首次提交」
+      if (top.error === undefined && options.allowNonRepo?.has(name) === true) continue
       issues.push({
         name,
         path,

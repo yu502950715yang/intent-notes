@@ -26,7 +26,15 @@ if (!existsSync(configPath)) {
   process.exit(1)
 }
 
-const { repos: rawRepos, errors: configErrors } = parseRepoListChecked(readFileSync(configPath, 'utf8'))
+// 受控报错：config.yml 是目录（EISDIR）或不可读时，Node 的裸栈不会说清读的是哪个文件
+let configText: string
+try {
+  configText = readFileSync(configPath, 'utf8')
+} catch (e) {
+  console.error(`verify-note-anchors: ${configPath} 不可读（${(e as NodeJS.ErrnoException).code ?? 'unknown'}）`)
+  process.exit(1)
+}
+const { repos: rawRepos, errors: configErrors } = parseRepoListChecked(configText)
 if (configErrors.length > 0) {
   console.error('verify-note-anchors: 仓库清单配置有误：')
   for (const e of configErrors) console.error(`  ${e}`)
@@ -67,7 +75,12 @@ for (const note of notes) {
 }
 
 if (errors.length === 0) {
-  console.log(`verify-note-anchors: 检查 ${checked} 篇笔记（归档已冻结，不计入），锚点全部有效（${repos.size} 个仓库）。`)
+  // 0 篇时「锚点全部有效」是无信息的断言：与门禁 1/2 同口径，点明根目录可能写错
+  console.log(
+    checked === 0
+      ? 'verify-note-anchors: 未发现任何笔记，请确认根目录正确（init 刚建完的空骨架属正常，仍退 0）。'
+      : `verify-note-anchors: 检查 ${checked} 篇笔记（归档已冻结，不计入），锚点全部有效（${repos.size} 个仓库）。`,
+  )
   process.exit(0)
 }
 console.error('verify-note-anchors: 发现违规：')
