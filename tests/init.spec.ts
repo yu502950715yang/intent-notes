@@ -296,3 +296,126 @@ test('重复运行 init 幂等：既有文件字节不变、.gitignore 不重复
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('junction 形式的子仓库同样被探测到', () => {
+  // Windows 上用 junction 共享/省盘是常见做法；readdir 的 Dirent 对它是 isDirectory()=false
+  const root = mkdtempSync(join(tmpdir(), 'intent-notes-junc-'))
+  const real = mkdtempSync(join(tmpdir(), 'intent-notes-real-'))
+  try {
+    git(real, 'init', '-q')
+    symlinkSync(real, join(root, 'linked'), 'junction')
+    mkdirSync(join(root, 'docs'))
+    assert.deepEqual(detectSubRepos(root), ['linked'])
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+    rmSync(real, { recursive: true, force: true })
+  }
+})
+
+test('init 把 junction 子仓库写进 .gitignore 与 config.yml', () => {
+  // 漏探测的后果：容器仓库会把子仓库当 gitlink 悄悄提交，或首次 git add 直接硬失败
+  const root = mkdtempSync(join(tmpdir(), 'intent-notes-juncinit-'))
+  const real = mkdtempSync(join(tmpdir(), 'intent-notes-real2-'))
+  try {
+    git(real, 'init', '-q')
+    symlinkSync(real, join(root, 'linked'), 'junction')
+    const r = spawnSync('node', ['skills/intent-notes/scripts/init.ts', root], { encoding: 'utf8' })
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(readFileSync(join(root, '.gitignore'), 'utf8'), /^\/linked\/$/m, 'junction 子仓库未进 .gitignore')
+    assert.match(
+      readFileSync(join(root, '.agents', 'intent-notes', 'config.yml'), 'utf8'),
+      /- path: linked\n\s+name: linked/,
+      'junction 子仓库未进 config.yml',
+    )
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+    rmSync(real, { recursive: true, force: true })
+  }
+})
+
+test('新增子仓库后再次 init 会把它补进 .gitignore', () => {
+  // marker 存在只说明写过片段，不代表规则齐全：bootstrap 期间会陆续 clone 子仓库
+  const root = makePolyrepo()
+  try {
+    assert.equal(spawnSync('node', ['skills/intent-notes/scripts/init.ts', root], { encoding: 'utf8' }).status, 0)
+    mkdirSync(join(root, 'vben'))
+    git(join(root, 'vben'), 'init', '-q')
+
+    const second = spawnSync('node', ['skills/intent-notes/scripts/init.ts', root], { encoding: 'utf8' })
+    assert.equal(second.status, 0, second.stderr)
+    const content = readFileSync(join(root, '.gitignore'), 'utf8')
+    assert.match(content, /^\/vben\/$/m, `新增子仓库未进 .gitignore：\n${content}`)
+    assert.equal(content.split('\n').filter(l => l === '/cloud/').length, 1, '既有排除行被重复追加')
+    assert.match(second.stdout, /vben/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('未知 --flag 报用法错误，不冒充路径', () => {
+  const r = spawnSync('node', ['skills/intent-notes/scripts/init.ts', '--dryrun'], { encoding: 'utf8' })
+  assert.equal(r.status, 1)
+  assert.match(r.stderr, /未知参数/)
+})
+
+test('悬空 .git 文件不被当成已是仓库，骨架不落在假仓库里', () => {
+  // 子模块/worktree 残留的 `.git` 文件会让 git 全面失败，骨架照写会让门禁 3 恒红
+  const root = mkdtempSync(join(tmpdir(), 'intent-notes-dangling-'))
+  try {
+    writeFileSync(join(root, '.git'), 'gitdir: /nowhere/missing/.git/modules/cloud\n')
+    const r = spawnSync('node', ['skills/intent-notes/scripts/init.ts', root], { encoding: 'utf8' })
+    assert.equal(r.status, 1, `悬空 .git 被判为仓库并写了骨架：${r.stdout}`)
+    assert.match(r.stderr, /无法识别|悬空/)
+    assert.ok(!existsSync(join(root, '.agents', 'notes')), '骨架不该落在假仓库里')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('.agents 是普通文件时 fail-closed，且不留下半截骨架', () => {
+  const root = mkdtempSync(join(tmpdir(), 'intent-notes-agentsfile-'))
+  try {
+    writeFileSync(join(root, '.agents'), 'not a dir\n')
+    const r = spawnSync('node', ['skills/intent-notes/scripts/init.ts', root], { encoding: 'utf8' })
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /不是目录/)
+    assert.ok(!existsSync(join(root, '.git')), '预检失败之前不该已经 git init')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('.gitignore 是目录时 fail-closed 且不抛裸栈', () => {
+  const root = mkdtempSync(join(tmpdir(), 'intent-notes-gitignoredir-'))
+  try {
+    mkdirSync(join(root, '.gitignore'))
+    const r = spawnSync('node', ['skills/intent-notes/scripts/init.ts', root], { encoding: 'utf8' })
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /不是普通文件/)
+    assert.doesNotMatch(r.stderr, /EISDIR/, '不该把 Node 裸栈当报错')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('config.yml 是符号链接时 fail-closed，不把内容写到项目外', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'intent-notes-cfgline-'))
+  const outside = mkdtempSync(join(tmpdir(), 'intent-notes-outside-'))
+  try {
+    mkdirSync(join(root, '.agents', 'intent-notes'), { recursive: true })
+    writeFileSync(join(outside, 'target.yml'), 'untouched\n')
+    try {
+      symlinkSync(join(outside, 'target.yml'), join(root, '.agents', 'intent-notes', 'config.yml'), 'file')
+    } catch {
+      t.skip('本机不允许创建文件符号链接')
+      return
+    }
+    const r = spawnSync('node', ['skills/intent-notes/scripts/init.ts', root], { encoding: 'utf8' })
+    assert.equal(r.status, 1)
+    assert.match(r.stderr, /符号链接|junction/)
+    assert.equal(readFileSync(join(outside, 'target.yml'), 'utf8'), 'untouched\n', '项目外文件被改写')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+    rmSync(outside, { recursive: true, force: true })
+  }
+})

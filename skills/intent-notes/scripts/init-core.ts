@@ -6,7 +6,7 @@
  * 经 symlink/junction 到达时两侧不等，骨架静默不落盘（exit 0、零输出）。
  * 本模块只读文件系统、无模块级副作用，spec 直接 import 它。
  */
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 export const MARKER = '# --- Intent Notes ---'
@@ -15,7 +15,17 @@ export const MARKER = '# --- Intent Notes ---'
 export function detectSubRepos(projectRoot: string): string[] {
   const out: string[] = []
   for (const entry of readdirSync(projectRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue
+    // junction 的 Dirent 是 isDirectory()=false / isSymbolicLink()=true（与 note-tree.ts 同口径）；
+    // 漏掉它，子仓库既不被 .gitignore 排除、也不进 config.yml，首次 git add 会硬失败
+    let isDir = entry.isDirectory()
+    if (!isDir && entry.isSymbolicLink()) {
+      try {
+        isDir = statSync(join(projectRoot, entry.name)).isDirectory()
+      } catch {
+        isDir = false
+      }
+    }
+    if (!isDir) continue
     if (existsSync(join(projectRoot, entry.name, '.git'))) out.push(entry.name)
   }
   return out.sort()

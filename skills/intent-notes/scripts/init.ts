@@ -25,6 +25,11 @@ if (target === undefined) {
   console.error('用法：node scripts/init.ts <项目根> [--dry-run]')
   process.exit(1)
 }
+if (target.startsWith('--')) {
+  // 拼错的 flag 不能被当成路径：否则报「项目根不存在」，离真正原因很远
+  console.error(`init: 未知参数 ${target}；用法：node scripts/init.ts <项目根> [--dry-run]`)
+  process.exit(1)
+}
 const projectRoot = resolve(target)
 
 if (!existsSync(projectRoot)) {
@@ -46,21 +51,39 @@ if (!existsSync(readmeTemplate)) {
 
 const configPath = join(projectRoot, '.agents', 'intent-notes', 'config.yml')
 const gitignorePath = join(projectRoot, '.gitignore')
+// 读之前先验类型：`.gitignore` 是目录时 readFileSync 会抛 EISDIR，用户看到的是裸栈
+if (existsSync(gitignorePath) && !lstatSync(gitignorePath).isFile()) {
+  console.error(`init: ${gitignorePath} 已存在但不是普通文件，拒绝继续`)
+  process.exit(1)
+}
 const existingGitignore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : ''
 // config 已存在就跳过：bootstrap 把「更深层子仓库」解法定为人工往 repos 补条目，
 // 覆盖会静默抹掉那些条目，相关笔记随即回到「未在项目声明中」
 const configExists = existsSync(configPath)
 const needsRootGit = !existsSync(join(projectRoot, '.git'))
 // 标记必须是独立整行：includes() 会被「注释里提到它」的一行骗到，排除规则静默不写
-const needsGitignore = !existingGitignore.split(/\r?\n/).includes(MARKER)
+const ignoreLines = existingGitignore.split(/\r?\n/)
+const needsMarker = !ignoreLines.includes(MARKER)
+// marker 在只说明「写过片段」，不代表规则齐全：bootstrap 期间会陆续 clone 进新子仓库
+const missingIgnore = subRepos.filter(r => !ignoreLines.includes(`/${r}/`))
 
 // 写盘目标不能是指向别处的链接：.agents 或 .agents/notes 做成 junction 时，
 // 整份骨架会落到项目外（同步盘还会损坏 .git），而文案只说「骨架已建立」
-for (const rel of ['.agents', join('.agents', 'notes'), join('.agents', 'intent-notes')]) {
+for (const rel of ['.agents', join('.agents', 'notes'), join('.agents', 'intent-notes'), join('.agents', 'intent-notes', 'config.yml')]) {
   const abs = join(projectRoot, rel)
   if (!existsSync(abs)) continue
   if (lstatSync(abs).isSymbolicLink()) {
     console.error(`init: ${abs} 是符号链接/junction（→ ${realpathSync(abs)}），拒绝把骨架写到项目外；请改用真实目录`)
+    process.exit(1)
+  }
+}
+
+// 骨架要写的两处路径必须是可写目标：'.agents' 是普通文件时会在写入阶段抛 ENOTDIR，
+// 那时 git init 已经执行，留下「仓库建好、目录一个没建」的半截状态
+for (const rel of ['.agents', join('.agents', 'notes'), join('.agents', 'intent-notes')]) {
+  const abs = join(projectRoot, rel)
+  if (existsSync(abs) && !lstatSync(abs).isDirectory()) {
+    console.error(`init: ${abs} 已存在但不是目录，拒绝继续（骨架会写不完整）`)
     process.exit(1)
   }
 }
@@ -71,6 +94,14 @@ if (needsRootGit) {
   const enclosing = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: projectRoot, encoding: 'utf8' })
   if (enclosing.status === 0) {
     console.error(`init: ${projectRoot} 已在 git 仓库 ${(enclosing.stdout ?? '').trim()} 内，不能在此建立嵌套仓库；请以该仓库根作为项目根`)
+    process.exit(1)
+  }
+} else {
+  // `.git` 存在不等于「是仓库」：悬空 gitdir（子模块/worktree 残留）会让 git 全面失败，
+  // 而骨架照写不误，此后门禁 3 对每篇笔记恒红
+  const inside = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: projectRoot, encoding: 'utf8' })
+  if (inside.status !== 0) {
+    console.error(`init: ${projectRoot}/.git 存在但 git 无法识别（悬空 gitdir？），拒绝在假仓库上建骨架`)
     process.exit(1)
   }
 }
@@ -87,7 +118,13 @@ const readmeExists = existsSync(join(projectRoot, '.agents', 'notes', 'README.md
 actions.push(readmeExists
   ? '`.agents/notes/README.md` 已存在，跳过'
   : '将写入 `.agents/notes/README.md`')
-actions.push(needsGitignore ? `将追加 .gitignore 片段（标记：${MARKER}）` : '.gitignore 已含 Intent Notes 段，跳过')
+actions.push(
+  needsMarker
+    ? `将追加 .gitignore 片段（标记：${MARKER}）`
+    : missingIgnore.length > 0
+      ? `.gitignore 已含片段，将补 ${missingIgnore.length} 条子仓库排除：${missingIgnore.join(', ')}`
+      : '.gitignore 已含 Intent Notes 段，跳过',
+)
 
 // 写入前如实打印计划：dry-run 与真实执行走同一份清单
 console.log(dryRun ? 'init --dry-run，未做任何改动：' : 'init: 将执行以下动作：')
@@ -117,8 +154,12 @@ if (!readmeExists) {
   writeFileSync(join(projectRoot, '.agents', 'notes', 'README.md'), readFileSync(readmeTemplate, 'utf8'), 'utf8')
 }
 
-if (needsGitignore) {
-  appendFileSync(gitignorePath, `${existingGitignore === '' || existingGitignore.endsWith('\n') ? '' : '\n'}${renderGitignore(subRepos)}`, 'utf8')
+const ignoreLead = existingGitignore === '' || existingGitignore.endsWith('\n') ? '' : '\n'
+if (needsMarker) {
+  appendFileSync(gitignorePath, `${ignoreLead}${renderGitignore(subRepos)}`, 'utf8')
+} else if (missingIgnore.length > 0) {
+  // marker 已在时只补缺失行：整段重写会把标记与既有规则再写一遍
+  appendFileSync(gitignorePath, `${ignoreLead}${missingIgnore.map(r => `/${r}/`).join('\n')}\n`, 'utf8')
 }
 
 console.log('init: 骨架已建立。')
