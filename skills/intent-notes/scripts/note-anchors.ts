@@ -29,9 +29,9 @@ export interface ParseResult {
 
 const SECTION = '## 涉及仓库'
 const NOT_INVOLVED = /^-\s+`([^`]+)`\s+不涉及\s*$/
-/** 段头允许 ≤3 空格缩进；段内遇到任何二级标题即结束。 */
-const SECTION_HEADER = /^ {0,3}## 涉及仓库[ \t]*$/
-const ANY_H2 = /^ {0,3}## /
+/** 段头允许 ≤3 空格缩进，`##` 后至少一个空白（空格或制表符）；段内遇到任何二级标题即结束。 */
+const SECTION_HEADER = /^ {0,3}##[ \t]+涉及仓库[ \t]*$/
+const ANY_H2 = /^ {0,3}##[ \t]/
 
 /**
  * 从笔记正文解析「涉及仓库」段。

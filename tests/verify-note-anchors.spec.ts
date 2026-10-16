@@ -475,3 +475,31 @@ test('分支与 commit 只存在于 origin/* 时锚点仍然有效', () => {
     rmSync(parent, { recursive: true, force: true })
   }
 })
+
+test('段头写成多个空格仍是 ## 涉及仓库 段', () => {
+  const repo = makeRepo('v140-feature')
+  const text = NOTE_OK.replace('BRANCH', 'v140-feature')
+    .replace('SHA', repo.sha)
+    .replace('## 涉及仓库', '##  涉及仓库')
+  const errors = verifyAnchors(
+    'implemented/feature/2026-01-01-t.md',
+    text,
+    new Map([['cloud', repo.path], ['uniapp', join(repo.path, 'absent')]]),
+  )
+  assert.deepEqual(errors, [], `多空格段头被判缺少段：${errors.join(' | ')}`)
+  rmSync(repo.path, { recursive: true, force: true })
+})
+
+test('段头写成制表符分隔仍是 ## 涉及仓库 段', () => {
+  const repo = makeRepo('v140-feature')
+  const text = NOTE_OK.replace('BRANCH', 'v140-feature')
+    .replace('SHA', repo.sha)
+    .replace('## 涉及仓库', '##\t涉及仓库')
+  const errors = verifyAnchors(
+    'implemented/feature/2026-01-01-t.md',
+    text,
+    new Map([['cloud', repo.path], ['uniapp', join(repo.path, 'absent')]]),
+  )
+  assert.deepEqual(errors, [], `制表符段头被判缺少段：${errors.join(' | ')}`)
+  rmSync(repo.path, { recursive: true, force: true })
+})

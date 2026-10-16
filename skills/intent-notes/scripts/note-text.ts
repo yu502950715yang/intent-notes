@@ -80,13 +80,14 @@ export interface ParsedNote {
   prose: string[]
 }
 
-/** 二级标题：CommonMark 允许 ≤3 空格缩进，与 note-anchors 的段头判定同口径。 */
-const H2 = /^ {0,3}## /
+/** 二级标题：CommonMark 允许 ≤3 空格缩进，`##` 后至少一个空白（空格或制表符）。 */
+const H2 = /^ {0,3}##\s+/
 
 /** 解析笔记文本。代码围栏内的 `##` 与 `Status:` 不算文档结构。 */
 export function parseNote(text: string): ParsedNote {
   const prose = proseLines(text)
-  // 归一掉前导缩进，调用方才能拿 `## Decision` 这类字面量直接比较
-  const h2s = prose.filter(l => H2.test(l)).map(l => l.trim())
+  // 归一掉缩进与 `##` 后的空白：`##  X` 与 `## X` 在 CommonMark 里是同一个标题，
+  // 只 trim 首尾会漏掉内部多余空白，既漏判禁用段头、又误判必备节缺失
+  const h2s = prose.filter(l => H2.test(l)).map(l => l.replace(/^ {0,3}##\s+/, '## ').trimEnd())
   return { firstH2: h2s[0], h2s, statusLine: toLines(text)[2], prose }
 }

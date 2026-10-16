@@ -131,3 +131,82 @@ test('0 篇笔记时退 0 但摘要点明「未发现任何笔记」', () => {
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('链接目标含空格时仍做断链检查（不得假绿）', () => {
+  // `[^)\s]+` 这类正则遇到空格就匹配不到，断链会被静默放过
+  const root = scaffold({ 'implemented/feature/2026-01-01-a.md': note('见 [缺失](my file.md)。') })
+  try {
+    const { code, stderr } = runTreeGate(root)
+    assert.equal(code, 1, `含空格的断链被放过了：${stderr}`)
+    assert.match(stderr, /相对链接指向不存在的文件：my file\.md/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('尖括号包裹的链接目标仍做断链检查', () => {
+  const root = scaffold({ 'implemented/feature/2026-01-01-a.md': note('见 [缺失](<my file.md>)。') })
+  try {
+    const { code, stderr } = runTreeGate(root)
+    assert.equal(code, 1, `尖括号目标被放过了：${stderr}`)
+    assert.match(stderr, /相对链接指向不存在的文件：my file\.md/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('引用式链接定义仍做断链检查', () => {
+  const root = scaffold({
+    'implemented/feature/2026-01-01-a.md': note(['见 [它][ref]。', '', '[ref]: missing-file.md'].join('\n')),
+  })
+  try {
+    const { code, stderr } = runTreeGate(root)
+    assert.equal(code, 1, `引用式定义的断链被放过了：${stderr}`)
+    assert.match(stderr, /相对链接指向不存在的文件：missing-file\.md/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('任意 scheme 的外链与协议相对 URL 不做断链检查', () => {
+  const root = scaffold({
+    'implemented/feature/2026-01-01-a.md': note('见 [邮件](mailto:a@b.com) 与 [协议相对](//example.com/x.md)。'),
+  })
+  try {
+    const { code, stderr } = runTreeGate(root)
+    assert.equal(code, 0, `外链被当成断链：${stderr}`)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('%20 编码与查询串指向真实文件时判绿', () => {
+  const root = scaffold({
+    'implemented/feature/2026-01-01-a.md': note('见 [空格](2026-01-02-my%20file.md) 与 [查询](2026-01-02-b.md?raw=1)。'),
+    'implemented/feature/2026-01-02-my file.md': note('t'),
+    'implemented/feature/2026-01-02-b.md': note('t'),
+  })
+  try {
+    const { code, stderr } = runTreeGate(root)
+    assert.equal(code, 0, `URL 编码/查询串被当成断链：${stderr}`)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('行内代码、缩进代码块与 HTML 注释里的示例链接不算真链接', () => {
+  // 记录链接写法的合法笔记会在这些位置引示例；围栏已豁免，其余三种必须同口径
+  const root = scaffold({
+    'implemented/feature/2026-01-01-a.md': note(
+      ['写法是 `[见](missing-inline.md)`。', '', '    [见](missing-indented.md)', '', '<!-- [见](missing-comment.md) -->'].join(
+        '\n',
+      ),
+    ),
+  })
+  try {
+    const { code, stderr } = runTreeGate(root)
+    assert.equal(code, 0, `示例链接被当成断链：${stderr}`)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})

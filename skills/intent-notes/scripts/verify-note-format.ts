@@ -94,7 +94,8 @@ for (const note of notes) {
   }
 
   const hasAlternatives = h2s.includes('## Alternatives considered')
-  const marked = prose.includes(ALTERNATIVES_NOT_RECORDED)
+  // 行尾空白是编辑器留下的，不该让标记失效：整行 trim 后相等即认
+  const marked = prose.some(l => l.trim() === ALTERNATIVES_NOT_RECORDED)
   if (hasAlternatives && marked) fail('同时带有 `## Alternatives considered` 与 not-recorded 标记，请删掉标记')
   if (!hasAlternatives && !marked) {
     fail('missing `## Alternatives considered`（存量收割的笔记若原始材料确实未记录备选，写 `<!-- alternatives: not-recorded -->`）')

@@ -335,3 +335,64 @@ test('存量收割可用 not-recorded 标记替代 Alternatives 节，但两者�
     rmSync(badRoot, { recursive: true, force: true })
   }
 })
+
+test('双空格段头不得绕过提案用语禁用', () => {
+  // CommonMark 里 `##  X` 与 `## X` 渲染结果相同：多一个空格不能变成逃生门
+  const root = scaffold({
+    'implemented/architecture/2026-01-01-a.md': GOOD_IMPLEMENTED.replace(
+      '## Alternatives considered',
+      '##  Acceptance criteria\n\nx\n\n## Alternatives considered',
+    ),
+  })
+  try {
+    const { code, stderr } = runFormatGate(root)
+    assert.equal(code, 1, `双空格段头绕过了禁用：${stderr}`)
+    assert.match(stderr, /proposal-era heading/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('必备节写成双空格仍被认作该节（不得误红）', () => {
+  const root = scaffold({
+    'implemented/architecture/2026-01-01-a.md': GOOD_IMPLEMENTED.replace('## Decision', '##  Decision'),
+  })
+  try {
+    const { code, stderr } = runFormatGate(root)
+    assert.equal(code, 0, `双空格必备节被误红：${stderr}`)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('not-recorded 标记允许行尾空白', () => {
+  const body = [
+    '# Agent Note: t',
+    '',
+    'Status: implemented',
+    '',
+    '## Problem',
+    '',
+    'p',
+    '',
+    '## Decision',
+    '',
+    'd',
+    '',
+    '<!-- alternatives: not-recorded -->' + '   ',
+    '',
+    '## Consequences',
+    '',
+    '**收益：** a',
+    '',
+    '**代价：** b',
+    '',
+  ].join('\n')
+  const root = scaffold({ 'implemented/architecture/2026-01-01-a.md': body })
+  try {
+    const { code, stderr } = runFormatGate(root)
+    assert.equal(code, 0, `行尾空白让标记失效：${stderr}`)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
