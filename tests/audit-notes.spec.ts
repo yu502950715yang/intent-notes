@@ -2,8 +2,11 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
+
+// 脚本路径相对仓库根解析：不锁 cwd 的话，从 tests/ 目录跑会整片失败
+const repoRoot = resolve(import.meta.dirname, '..')
 
 function scaffold(notes: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), 'intent-notes-audit-'))
@@ -18,6 +21,7 @@ function scaffold(notes: Record<string, string>): string {
 function run(root: string, today = '2026-01-31'): { code: number; stdout: string } {
   const r = spawnSync('node', ['skills/intent-notes/scripts/audit-notes.ts', root], {
     encoding: 'utf8',
+    cwd: repoRoot,
     env: { ...process.env, INTENT_NOTES_TODAY: today },
   })
   return { code: r.status ?? -1, stdout: r.stdout ?? '' }
