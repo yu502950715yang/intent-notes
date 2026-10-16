@@ -6,18 +6,18 @@ test('4 反引号外套 3 反引号：内层围栏不闭合外层', () => {
   const text = [
     '````markdown',
     '```markdown',
-    '## 涉及仓库',
+    '## Affected repositories',
     '',
     '- `内层` 不涉及',
     '```',
     '````',
     '',
-    '## 涉及仓库',
+    '## Affected repositories',
     '',
     '- `cloud` 不涉及',
   ].join('\n')
   const prose = proseLines(text)
-  assert.equal(prose.filter(l => l === '## 涉及仓库').length, 1, '真段头应当只剩一个')
+  assert.equal(prose.filter(l => l === '## Affected repositories').length, 1, '真段头应当只剩一个')
   assert.ok(!prose.includes('- `内层` 不涉及'), '围栏里的示例行不该进正文')
   assert.ok(prose.includes('- `cloud` 不涉及'))
 })

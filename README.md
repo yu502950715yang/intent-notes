@@ -94,7 +94,7 @@ Status: implemented
 `cloud` 为唯一真源，`GET /order/{id}` 返回 `status` 与 `statusRev`；`vue` 只渲染，
 不再本地推进状态，轮询间隔固定 30s。
 
-## 涉及仓库
+## Affected repositories
 
 - `cloud` 分支 `v140-order-sync` commits `36a846d`
 - `vue` 不涉及
@@ -113,7 +113,7 @@ Status: implemented
 **代价：** `vue` 端最坏 30s 延迟，弱网下更久；轮询带来恒定请求量。
 ```
 
-**机器标记一律照抄、不要翻译**：`# Agent Note: `、`Status: `、`Archived: `、`## Problem`、`## Proposal`、`## Decision`、`## Alternatives considered`、`## Acceptance criteria`、`## Risks`、`## Consequences` 保持英文，`## 涉及仓库` 保持中文。门禁按字面匹配——把 `## Problem` 译成 `## 问题` 会直接判红。
+**机器标记一律照抄、不要翻译**：`# Agent Note: `、`Status: `、`Archived: `、`## Problem`、`## Proposal`、`## Decision`、`## Alternatives considered`、`## Acceptance criteria`、`## Risks`、`## Consequences`、`## Affected repositories` 保持英文。门禁按字面匹配——把 `## Problem` 译成 `## 问题` 会直接判红。
 
 ## 笔记体系速查
 
@@ -131,7 +131,7 @@ Status: implemented
 
 - **目录即状态**：`Status:` 必须与所在目录一致。唯一例外是 `archived/`——它保持 `Status: implemented`，并在第 4 行写 `Archived: YYYY-MM-DD`
 - **`## Alternatives considered` 必写**：每个真考虑过的备选，先写它最强的理由，再写为什么不用；**没有过的选项不要编**（存量收割确实无记录时写 `<!-- alternatives: not-recorded -->`，与本节头不能同时出现）
-- **`## 涉及仓库` 缺失直接判红**：没有涉及仓库也要按 `` - `仓库名` 不涉及 `` 的形态写一行（仓库名照抄 `config.yml`），不是省略本节
+- **`## Affected repositories` 缺失直接判红**：没有涉及仓库也要按 `` - `仓库名` 不涉及 `` 的形态写一行（仓库名照抄 `config.yml`），不是省略本节
 - **一条笔记永远不被改写成另一个决定**：决定或理由翻转 → 新开一篇并互链
 - **禁止 `INDEX.md`**：集中式索引会与笔记树同时腐化；notes 根下只放 `README.md` / `AGENTS.md` / `CLAUDE.md`，笔记必须落在 `{class}/` 里
 - **归档不是改状态而是冻结**：归档后不再编辑、翻译、移动，且整篇豁免锚点校验

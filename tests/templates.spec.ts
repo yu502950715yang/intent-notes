@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { parseAnchors } from '../skills/intent-notes/scripts/note-anchors.ts'
 
 const skillRoot = resolve(import.meta.dirname, '../skills/intent-notes')
 
@@ -90,5 +91,17 @@ test('七份 references 与四份模板齐备', () => {
     'templates/rejected.md',
   ]) {
     assert.ok(existsSync(join(skillRoot, rel)), `${rel} 缺失`)
+  }
+})
+
+test('四份模板的锚点段头必须被门禁 3 认作段头', () => {
+  // 模板与门禁的段名是一对契约：任一侧改名而另一侧没跟，照模板写出的笔记会整篇判红
+  for (const rel of ['templates/proposed.md', 'templates/implemented.md', 'templates/archived.md', 'templates/rejected.md']) {
+    const { errors } = parseAnchors(fill(readFileSync(join(skillRoot, rel), 'utf8')))
+    // 占位值不是合法短哈希，会另报格式错；这里只钉「段头被识别」这一条
+    assert.ok(
+      !errors.some(e => e.includes('缺少') || e.includes('已改名')),
+      `${rel} 的锚点段头未被门禁 3 识别：${errors.join(' | ')}`,
+    )
   }
 })

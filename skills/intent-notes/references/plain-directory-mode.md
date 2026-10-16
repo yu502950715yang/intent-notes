@@ -62,7 +62,7 @@ git -C "<工作目录>" commit -m "chore: 建立 Agent Notes 骨架"
 3. 按 `SKILL.md` 第一节判**要不要写笔记**
 4. `git add` **指定文件**（不要 `git add -A`，免得把密码、原始素材、临时文件带进去）
 5. `git commit`：中文，一句话说清改了什么
-6. 写笔记（若需要）：在 `## 涉及仓库` 段写锚点行，格式真源是 `references/note-format.md` 的「涉及仓库」一节。这里只说两点最容易踩的：
+6. 写笔记（若需要）：在 `## Affected repositories` 段写锚点行，格式真源是 `references/note-format.md` 的「Affected repositories」一节。这里只说两点最容易踩的：
 
    - 锚点行必须**顶格写、不要缩进**：门禁按行首匹配，缩进会被判「无法解析」
    - 三个占位换真值：仓库名用工作目录名（即 `config.yml` 里 `path: .` 那条的 `name`），分支名用 `git branch --show-current` 的结果，短哈希用上一步 commit 的短哈希

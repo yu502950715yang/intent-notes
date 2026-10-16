@@ -10,7 +10,7 @@ Status: proposed
 
 {{拟议的变更，可用将来时。计划、迁移步骤、待解决问题放这里。}}
 
-## 涉及仓库
+## Affected repositories
 
 - `{{仓库名}}` 分支 `{{分支名}}` commits `{{短哈希}}`
 

@@ -41,7 +41,7 @@ t
 
 t
 
-## 涉及仓库
+## Affected repositories
 
 - \`cloud\` 分支 \`BRANCH\` commits \`SHA\`
 - \`uniapp\` 不涉及
@@ -70,7 +70,7 @@ t
 
 t
 
-## 涉及仓库
+## Affected repositories
 
 - \`cloud\` 不涉及
 
@@ -145,7 +145,7 @@ test('声明的仓库不存在则报错', () => {
 })
 
 test('解析：不涉及与正常行都能识别', () => {
-  const text = ['## 涉及仓库', '', '- `cloud` 分支 `v140` commits `abc1234` `def5678`', '- `uniapp` 不涉及'].join('\n')
+  const text = ['## Affected repositories', '', '- `cloud` 分支 `v140` commits `abc1234` `def5678`', '- `uniapp` 不涉及'].join('\n')
   const { repos, errors } = parseAnchors(text)
   assert.deepEqual(errors, [])
   assert.equal(repos.length, 2)
@@ -155,25 +155,25 @@ test('解析：不涉及与正常行都能识别', () => {
   assert.equal(repos[1]?.notInvolved, true)
 })
 
-test('缺 ## 涉及仓库 段则报错', () => {
+test('缺 ## Affected repositories 段则报错', () => {
   const { repos, errors } = parseAnchors('# Agent Note: t\n\nStatus: implemented\n')
   assert.deepEqual(repos, [])
   assert.equal(errors.length, 1)
-  assert.match(errors[0] ?? '', /缺少 `## 涉及仓库` 段/)
+  assert.match(errors[0] ?? '', /缺少 `## Affected repositories` 段/)
 })
 
-test('围栏内的 ## 涉及仓库 不算真段头', () => {
+test('围栏内的 ## Affected repositories 不算真段头', () => {
   // 记录本格式的笔记会在围栏里引示例；门禁必须认围栏外的真段头，否则既误红又漏校验
   const text = [
     '## Problem',
     '',
     '```markdown',
-    '## 涉及仓库',
+    '## Affected repositories',
     '',
     '- `内层` 分支 `x` commits `abc1234`',
     '```',
     '',
-    '## 涉及仓库',
+    '## Affected repositories',
     '',
     '- `cloud` 分支 `v140` commits `abc1234`',
   ].join('\n')
@@ -184,7 +184,7 @@ test('围栏内的 ## 涉及仓库 不算真段头', () => {
 })
 
 test('commits 后第二个短哈希格式不对也要报错', () => {
-  const text = ['## 涉及仓库', '', '- `cloud` 分支 `v140` commits `abc1234` `不是哈希`'].join('\n')
+  const text = ['## Affected repositories', '', '- `cloud` 分支 `v140` commits `abc1234` `不是哈希`'].join('\n')
   const { errors } = parseAnchors(text)
   assert.equal(errors.length, 1)
   assert.match(errors[0] ?? '', /commit 短哈希格式不对/)
@@ -281,11 +281,11 @@ test('嵌套围栏（4 套 3）里的示例段不得顶替真段：门禁 3 必�
       '记录本格式的笔记会引示例：', '',
       '````markdown',
       '```markdown',
-      '## 涉及仓库', '',
+      '## Affected repositories', '',
       '- `cloud` 不涉及',
       '```',
       '````', '',
-      '## 涉及仓库', '',
+      '## Affected repositories', '',
       `- \`cloud\` 分支 \`no-such-branch\` commits \`${repo.sha}\``, '',
       '## Decision', '', 't', '',
       '## Alternatives considered', '', 'x', '',
@@ -305,22 +305,22 @@ test('嵌套围栏（4 套 3）里的示例段不得顶替真段：门禁 3 必�
   }
 })
 
-test('重复的 ## 涉及仓库 段报错（第二个段不会被静默放过）', () => {
+test('重复的 ## Affected repositories 段报错（第二个段不会被静默放过）', () => {
   const text = [
-    '## 涉及仓库', '',
+    '## Affected repositories', '',
     '- `cloud` 分支 `v140` commits `abc1234`', '',
     '## Decision', '', 't', '',
-    '## 涉及仓库', '',
+    '## Affected repositories', '',
     '- `cloud` 分支 `no-such-branch` commits `abc1234`',
   ].join('\n')
   const { repos, errors } = parseAnchors(text)
   assert.equal(errors.length, 1)
-  assert.match(errors[0] ?? '', /重复的 `## 涉及仓库` 段/)
+  assert.match(errors[0] ?? '', /重复的 `## Affected repositories` 段/)
   assert.equal(repos.length, 1)
 })
 
-test('## 涉及仓库 允许 ≤3 空格缩进', () => {
-  const { repos, errors } = parseAnchors(['## Problem', '', '  ## 涉及仓库', '', '- `cloud` 不涉及'].join('\n'))
+test('## Affected repositories 允许 ≤3 空格缩进', () => {
+  const { repos, errors } = parseAnchors(['## Problem', '', '  ## Affected repositories', '', '- `cloud` 不涉及'].join('\n'))
   assert.deepEqual(errors, [])
   assert.equal(repos.length, 1)
 })
@@ -335,7 +335,7 @@ test('子目录不是独立仓库根时门禁 3 报红（禁止锚定到上层�
       '# Agent Note: t', '', 'Status: implemented', '',
       '## Problem', '', 't', '',
       '## Decision', '', 't', '',
-      '## 涉及仓库', '',
+      '## Affected repositories', '',
       `- \`cloud\` 分支 \`main\` commits \`${repo.sha}\``, '',
       '## Alternatives considered', '', 'x', '',
       '## Consequences', '', 't', '',
@@ -463,7 +463,7 @@ test('分支与 commit 只存在于 origin/* 时锚点仍然有效', () => {
     const note = [
       '# Agent Note: t', '', 'Status: implemented', '', '## Problem', '', 'p',
       '', '## Decision', '', 'd',
-      '', '## 涉及仓库', '', `- \`self\` 分支 \`feature/x\` commits \`${sha}\``,
+      '', '## Affected repositories', '', `- \`self\` 分支 \`feature/x\` commits \`${sha}\``,
       '', '## Alternatives considered', '', '- a',
       '', '## Consequences', '', 'c', '',
     ].join('\n')
@@ -476,11 +476,11 @@ test('分支与 commit 只存在于 origin/* 时锚点仍然有效', () => {
   }
 })
 
-test('段头写成多个空格仍是 ## 涉及仓库 段', () => {
+test('段头写成多个空格仍是 ## Affected repositories 段', () => {
   const repo = makeRepo('v140-feature')
   const text = NOTE_OK.replace('BRANCH', 'v140-feature')
     .replace('SHA', repo.sha)
-    .replace('## 涉及仓库', '##  涉及仓库')
+    .replace('## Affected repositories', '##  Affected repositories')
   const errors = verifyAnchors(
     'implemented/feature/2026-01-01-t.md',
     text,
@@ -490,11 +490,11 @@ test('段头写成多个空格仍是 ## 涉及仓库 段', () => {
   rmSync(repo.path, { recursive: true, force: true })
 })
 
-test('段头写成制表符分隔仍是 ## 涉及仓库 段', () => {
+test('段头写成制表符分隔仍是 ## Affected repositories 段', () => {
   const repo = makeRepo('v140-feature')
   const text = NOTE_OK.replace('BRANCH', 'v140-feature')
     .replace('SHA', repo.sha)
-    .replace('## 涉及仓库', '##\t涉及仓库')
+    .replace('## Affected repositories', '##\tAffected repositories')
   const errors = verifyAnchors(
     'implemented/feature/2026-01-01-t.md',
     text,
@@ -535,4 +535,56 @@ test('CLI：0 篇笔记时摘要点明未发现笔记，不自称锚点全部有
   } finally {
     rmSync(repo.path, { recursive: true, force: true })
   }
+})
+
+test('旧段头 ## 涉及仓库 判红，且只报一条改名指引', () => {
+  // 段名已统一为英文，门禁硬切换：旧名不能继续放行，否则同一契约两套写法长期并存。
+  // 只报一条——再叠一条「缺少 `## Affected repositories` 段」会把修法埋掉。
+  const { repos, errors } = parseAnchors(['## Problem', '', '## 涉及仓库', '', '- `cloud` 不涉及'].join('\n'))
+  assert.deepEqual(repos, [])
+  assert.equal(errors.length, 1, `应只报一条迁移错，实际：${errors.join(' | ')}`)
+  assert.match(errors[0] ?? '', /第 3 行/)
+  assert.match(errors[0] ?? '', /已改名为 `## Affected repositories`/)
+  assert.doesNotMatch(errors[0] ?? '', /缺少/, '迁移指引不该再叠一条「缺少段」')
+})
+
+test('新版与旧版段头并存时，旧段头报迁移错、新段内容照常解析', () => {
+  // 改完段头即绿：迁移错不能顺带把新段的锚点吞掉，否则用户失去校验反馈
+  const { repos, errors } = parseAnchors([
+    '## Affected repositories', '',
+    '- `cloud` 不涉及', '',
+    '## 涉及仓库', '',
+    '- `uniapp` 不涉及',
+  ].join('\n'))
+  assert.deepEqual(repos.map(r => r.name), ['cloud'])
+  assert.equal(errors.length, 1, `应只报旧段头那一条，实际：${errors.join(' | ')}`)
+  assert.match(errors[0] ?? '', /已改名为 `## Affected repositories`/)
+})
+
+test('CLI：旧段头笔记报红并给出改名指引', () => {
+  const repo = makeRepo('main')
+  try {
+    const note = NOTE_OK.replace('BRANCH', 'main').replace('SHA', repo.sha)
+      .replace('## Affected repositories', '## 涉及仓库')
+    scaffoldNote(repo.path, note, '  - path: .\n    name: cloud\n  - path: .\n    name: uniapp\n')
+    const { code, stderr } = runAnchorGate(repo.path)
+    assert.equal(code, 1, `旧段头被静默放绿：${stderr}`)
+    assert.match(stderr, /已改名为 `## Affected repositories`/, `未给出改名指引：${stderr}`)
+  } finally {
+    rmSync(repo.path, { recursive: true, force: true })
+  }
+})
+
+test('围栏内的旧段头不算段头，不触发迁移错', () => {
+  // 讲这次改名的笔记会在围栏里引旧名做对照；围栏是示例不是结构，误报会让合法笔记判红
+  const text = [
+    '## Affected repositories', '',
+    '- `cloud` 不涉及', '',
+    '```markdown',
+    '## 涉及仓库',
+    '```',
+  ].join('\n')
+  const { repos, errors } = parseAnchors(text)
+  assert.deepEqual(errors, [])
+  assert.deepEqual(repos.map(r => r.name), ['cloud'])
 })

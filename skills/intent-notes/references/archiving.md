@@ -17,7 +17,7 @@ Archived: YYYY-MM-DD
 
 其余骨架与 `implemented` 相同（`## Problem` → `## Decision` → `## Alternatives considered` → `## Consequences`）。门禁会校验第 4 行的存在与格式，也会拒绝归档笔记里的提案用语。可直接以 `templates/archived.md` 起步。
 
-**归档笔记豁免锚点校验。** 锚点门禁（`verify-note-anchors.ts`）整篇跳过 `archived/` 下的笔记——归档已冻结、不再作为当前行为的权威依据，分支与 commit 不再实时核对；格式门禁的必备节里也不含 `## 涉及仓库`。所以从 `implemented` 冻结成 `archived` 时，该段**可以省略，也可以保留原样**：段内的分支、commit 随代码漂移不算失效，不必为它更新锚点，也不会因此判红（`templates/archived.md` 仍带该段，照抄或删掉都合规）。
+**归档笔记豁免锚点校验。** 锚点门禁（`verify-note-anchors.ts`）整篇跳过 `archived/` 下的笔记——归档已冻结、不再作为当前行为的权威依据，分支与 commit 不再实时核对；格式门禁的必备节里也不含 `## Affected repositories`。所以从 `implemented` 冻结成 `archived` 时，该段**可以省略，也可以保留原样**：段内的分支、commit 随代码漂移不算失效，不必为它更新锚点，也不会因此判红（`templates/archived.md` 仍带该段，照抄或删掉都合规）。
 
 ## 删除，而不是归档
 

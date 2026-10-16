@@ -168,11 +168,11 @@ test('merge commit 也能列出改动文件', () => {
   rmSync(path, { recursive: true, force: true })
 })
 
-test('无分支时不出 ## 涉及仓库 段，但保留事实载荷', () => {
+test('无分支时不出 ## Affected repositories 段，但保留事实载荷', () => {
   // 段内写 `(未知分支)` 过不了 verifyAnchors，写提示行过不了 parseAnchors——整段不出
   const ctx = { repo: 'cloud', sha: 'abc1234', subject: 'x', branches: [], files: ['a.txt'] }
   const md = renderBackfill(ctx, ['implemented/feature/2026-01-01-a.md'])
-  assert.doesNotMatch(md, /^## 涉及仓库$/m) // 只禁段头行；行内提及不算
+  assert.doesNotMatch(md, /^## Affected repositories$/m) // 只禁段头行；行内提及不算
   assert.match(md, /未找到包含该提交的分支/)
   // 版本前缀是可选增强：ctx 里没有就不出该行（无分支路径同样有守卫）
   assert.doesNotMatch(md, /版本前缀/)
@@ -212,7 +212,7 @@ test('CLI：成功路径 exit 0，stdout 含锚点行且匹配到相关笔记', 
 
   const r = spawnSync('node', ['skills/intent-notes/scripts/backfill.ts', sha, root], { encoding: 'utf8' })
   assert.equal(r.status, 0, r.stderr)
-  assert.match(r.stdout, /## 涉及仓库/)
+  assert.match(r.stdout, /## Affected repositories/)
   assert.match(r.stdout, /- `cloud` 分支 `v140` commits `[0-9a-f]{7,40}`/)
   assert.match(r.stdout, /implemented\/feature\/2026-01-01-a\.md/)
   rmSync(root, { recursive: true, force: true })
@@ -380,7 +380,7 @@ test('经 junction 调用 backfill 不得静默不产出', () => {
   try {
     const r = spawnSync('node', [join(link, 'scripts', 'backfill.ts'), sha, root], { encoding: 'utf8', cwd: skillRoot })
     assert.equal(r.status, 0, r.stderr)
-    assert.match(r.stdout, /## 涉及仓库/, `经 junction 调用时被跳过了：stdout=${JSON.stringify(r.stdout)} stderr=${JSON.stringify(r.stderr)}`)
+    assert.match(r.stdout, /## Affected repositories/, `经 junction 调用时被跳过了：stdout=${JSON.stringify(r.stdout)} stderr=${JSON.stringify(r.stderr)}`)
     assert.match(r.stdout, /- `cloud` 分支 `v140` commits `[0-9a-f]{7,40}`/)
   } finally {
     rmSync(root, { recursive: true, force: true })
@@ -456,7 +456,7 @@ test('CLI：repos 条目不是独立仓库根时 exit 1，不得把上层仓库�
 })
 
 test('renderBackfill 自带用法指引：片段不得整段粘贴', () => {
-  // 片段里有自己的 `## 涉及仓库` 段头；整体粘进笔记会造出第二个段头，门禁 3 判「重复段」
+  // 片段里有自己的 `## Affected repositories` 段头；整体粘进笔记会造出第二个段头，门禁 3 判「重复段」
   const ctx = { repo: 'cloud', sha: 'abc1234', subject: 'x', branches: ['v140'], files: ['a.txt'] }
   const md = renderBackfill(ctx, [])
   assert.match(md, /不要整段粘贴/, `缺少用法指引：${md}`)
@@ -480,7 +480,7 @@ test('按指引只搬锚点行时，片段能过门禁 3（端到端）', () => 
     const note = [
       '# Agent Note: t', '', 'Status: implemented', '', '## Problem', '', 'p',
       '', '## Decision', '', 'd',
-      '', '## 涉及仓库', '', anchorLine,
+      '', '## Affected repositories', '', anchorLine,
       '', '## Alternatives considered', '', '- a',
       '', '## Consequences', '', 'c', '',
     ].join('\n')
