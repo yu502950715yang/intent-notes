@@ -29,7 +29,8 @@ const STATUS: Record<string, RegExp> = {
 const REQUIRED: Record<string, string[]> = {
   proposed: ['## Proposal', '## Acceptance criteria', '## Risks'],
   implemented: ['## Decision', '## Consequences'],
-  rejected: ['## Proposal'],
+  // rejected 是冻结的提案形态：验收标准与风险正是「为什么否决」的依据，与 proposed 同骨架
+  rejected: ['## Proposal', '## Acceptance criteria', '## Risks'],
   archived: ['## Decision', '## Consequences'],
 }
 

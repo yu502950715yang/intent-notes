@@ -28,7 +28,7 @@ node "<skill-dir>/scripts/verify-note-format.ts" "<notes 根>"   # 门禁 2：�
 
 ## 4. 事实挂锚点了吗
 
-路径、符号、默认值、分支、commit——是否都真实？**仓库、分支、commit** 由本 skill 基目录下的 `scripts/verify-note-anchors.ts`（项目级部署即 `.agents/skills/intent-notes/scripts/verify-note-anchors.ts`）实时查 git 校验；**文件是否存在由人工自检**，本门禁不校验（`gitTracksFile` 为预留能力，尚未接入），但写的时候就要自检，不要留给门禁擦屁股。
+路径、符号、默认值、分支、commit——是否都真实？**仓库、分支、commit** 由本 skill 基目录下的 `scripts/verify-note-anchors.ts`（DSH 项目级部署即 `<项目根>/.agents/skills/intent-notes/scripts/verify-note-anchors.ts`，换 harness 换成对应扫描根）实时查 git 校验；**文件是否存在由人工自检**（路径写成 `<仓库名>:<仓库内相对路径>`），本门禁不校验（`gitTracksFile` 为预留能力，尚未接入），但写的时候就要自检，不要留给门禁擦屁股。
 
 笔记里的**相对 Markdown 链接**另由门禁 1（本 skill 基目录下的 `scripts/verify-note-tree.ts`）做**断链检查**：链接目标在磁盘上不存在即判红——别链到还没写的笔记，也别写错相对层级。
 

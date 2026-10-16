@@ -2,7 +2,7 @@
 
 本目录存放本项目的**决策笔记**：代码与文档承载不了的**为什么**，以及**放弃了什么**。
 
-规则（何时写、怎么写、何时归档）见本项目的 `intent-notes` skill——通常位于 `.agents/skills/intent-notes/`。
+规则（何时写、怎么写、何时归档）见本项目的 `intent-notes` skill——位置由 harness 的扫描根决定（DSH 项目级为 `.agents/skills/intent-notes/`）。
 
 本目录可能不是代码仓库：需求 / 资料类工作目录由 agent 代劳版本控制，见该 skill 的 `references/plain-directory-mode.md`。
 

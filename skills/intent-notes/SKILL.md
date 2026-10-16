@@ -48,7 +48,7 @@ description: 在交付项目或工作目录里留下并维护决策笔记（Agen
 
 ## 四、硬规则
 
-**骨架标记不可翻译、不可改写。** 第 1 / 3 / 4 行与各生命周期的**必备段头**由门禁按字面匹配，一律照抄：`# Agent Note: `、`Status: `、`Archived: `、`## Problem`、`## Proposal`、`## Decision`、`## Alternatives considered`、`## Acceptance criteria`、`## Risks`、`## Consequences` 保持英文，`## 涉及仓库` 保持中文。**…自由节…** 的段头和全部正文才用中文写——把 `## Problem` 译成 `## 问题` 会直接判红。
+**骨架标记不可翻译、不可改写。** 第 1 / 3 / 4 行与各生命周期的**必备段头**由门禁按字面匹配（标题只校验前缀 `# Agent Note: `，段头允许 ≤3 空格缩进、`##` 后空格或制表符），一律照抄：`# Agent Note: `、`Status: `、`Archived: `、`## Problem`、`## Proposal`、`## Decision`、`## Alternatives considered`、`## Acceptance criteria`、`## Risks`、`## Consequences` 保持英文，`## 涉及仓库` 保持中文。**…自由节…** 的段头和全部正文才用中文写——把 `## Problem` 译成 `## 问题` 会直接判红。
 
 1. 前三行严格为 `# Agent Note: <标题>`、空行、`Status: <状态>`；`Status` 必须与所在目录一致——**唯一例外是 `archived/`**：它保持 `Status: implemented`，并在第 4 行写 `Archived: YYYY-MM-DD`（其余生命周期的第 4 行必须为空）。
 2. `## Alternatives considered` **必写**：每个真考虑过的备选，先写它最强的理由，再解释为什么不用。没有过的选项不要编。存量收割的笔记若原始材料确实未记录备选，写 `<!-- alternatives: not-recorded -->`。

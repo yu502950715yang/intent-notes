@@ -20,6 +20,7 @@
 - **英文、全小写、连字符分词**，2–7 词（常规 3–5）：`2026-06-13-capability-seams`、`2026-06-21-bounded-llm-request-recovery`
 - **写决策或机制本身**，不写动作、不写分类名、不写整句：`note-tree-anchor-check` 合格，`fix-note-tree` 不合格
 - **不写中文、下划线、大写**：门禁对文件名的正则只有 `` /^\d{4}-\d{2}-\d{2}-.+\.md$/ ``——**不**校验大小写、连字符、词数，也不校验日期是否真实；这几条是**约定而非机检**。中英混排会让「新建前先搜同主题旧笔记」失效——搜索是拿文件名做的
+- **取代旧篇的新篇**：日期仍写**该主张首次提出**的日期（通常等于被取代那篇的日期），`topic-title` 写新决定。否则同一条主张的两次记录会有两套日期语义，「按日期搜同主题旧笔记」照样失效
 
 ## 头块（前三行，门禁逐字核对）
 
@@ -46,7 +47,7 @@ Status: <状态>
 |---|---|
 | `proposed` | `## Problem` → `## Proposal` → …自由节… → `## Alternatives considered` → `## Acceptance criteria` → `## Risks` |
 | `implemented` | `## Problem` → `## Decision` → …自由节… → `## Alternatives considered` → `## Consequences` |
-| `rejected` | 冻结的提案形态，结论在 `Status:` 行 |
+| `rejected` | 与 `proposed` 同骨架（冻结的提案形态），结论在 `Status:` 行；验收标准与风险是「为什么否决」的依据，缺了判红 |
 | `archived` | 与 `implemented` 同骨架；`Status:` 保持 `implemented`，第 4 行为 `Archived: YYYY-MM-DD` |
 
 **`implemented` 与 `archived` 都禁止出现**（门禁正则为大小写不敏感）：`## Proposal`、`## Plan`、`## Migration plan`、`## Acceptance criteria` —— 门禁会拒绝，因为这些是提案用语，混进已交付记录会让读者分不清"做了没有"；`archived` 由 `implemented` 冻结而来，同等适用。
@@ -68,9 +69,11 @@ Status: <状态>
 - `uniapp` 不涉及
 ```
 
-每行一个仓库，两种形态：带分支与 commit，或明确写「不涉及」。**锚点会被实时校验**——分支或 commit 不存在、commit 不在声明的分支上，门禁都会报错。`commits` 后**只列短哈希**，不要在同一行附其他反引号内容（会被判为格式错误）。文件是否存在**由人工自检**，本门禁不校验（`gitTracksFile` 为预留能力，尚未接入）。
+每行一个仓库，两种形态：带分支与 commit，或明确写「不涉及」。**锚点会被实时校验**——分支或 commit 不存在、commit 不在声明的分支上，门禁都会报错。`commits` 后**只列短哈希**，不要在同一行附其他反引号内容（会被判为格式错误）。文件是否存在**由人工自检**，本门禁不校验（`gitTracksFile` 为预留能力，尚未接入）；自检时把路径写成 `<仓库名>:<仓库内相对路径>`，多仓库下才说得清是哪个仓库的文件。
 
 项目根自身也是一个仓库：它的名字是 `.agents/intent-notes/config.yml` 里 `path: .` 对应的 `name`（默认取项目目录名）。单仓库项目下这就是唯一一行。
+
+polyrepo 里笔记自己就住在容器仓库中，通常无法在本次提交里自指尚未产生的 commit：此时容器仓库写成 `` - `仓库名` 不涉及 ``，只锚定真正装了代码的子仓库——**本节仍要列全相关子仓库**，省略容器仓库不算缺项。
 
 **以 `templates/implemented.md` 起步时**，模板里 ``- `{{不涉及的仓库名}}` 不涉及`` 那一行**若项目里没有第二个仓库就整行删掉**——不要把它替换成一个不存在的仓库名，门禁 3 会报「仓库 `X` 未在项目声明中」。单仓库项目与 `references/plain-directory-mode.md` 的非代码工作目录都适用本条。
 

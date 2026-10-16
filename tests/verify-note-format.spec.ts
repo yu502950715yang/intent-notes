@@ -269,8 +269,9 @@ test('0 篇笔记时退 0，但摘要不自称「格式全部合规」', () => {
 })
 
 test('rejected 的状态行必须是 em dash + 原因', () => {
+  // rejected 是「冻结的提案形态」：骨架与 proposed 同（含验收标准与风险），否则否决理由失去依据
   const rejected = (status: string): string =>
-    ['# Agent Note: t', '', status, '', '## Problem', '', 'p', '', '## Proposal', '', '拟议内容', '', '## Alternatives considered', '', '- a'].join('\n')
+    ['# Agent Note: t', '', status, '', '## Problem', '', 'p', '', '## Proposal', '', '拟议内容', '', '## Alternatives considered', '', '- a', '', '## Acceptance criteria', '', 'a', '', '## Risks', '', 'r'].join('\n')
   const bad = scaffold({ 'rejected/feature/2026-01-01-a.md': rejected('Status: rejected - 全角连字符') })
   const good = scaffold({ 'rejected/feature/2026-01-01-a.md': rejected('Status: rejected — 改用方案 B') })
   try {
@@ -279,6 +280,19 @@ test('rejected 的状态行必须是 em dash + 原因', () => {
   } finally {
     rmSync(bad, { recursive: true, force: true })
     rmSync(good, { recursive: true, force: true })
+  }
+})
+
+test('rejected 缺验收标准或风险则判红（与 proposed 同骨架）', () => {
+  const bare = ['# Agent Note: t', '', 'Status: rejected — 改用方案 B', '', '## Problem', '', 'p', '', '## Proposal', '', '拟议内容', '', '## Alternatives considered', '', '- a'].join('\n')
+  const root = scaffold({ 'rejected/feature/2026-01-01-a.md': bare })
+  try {
+    const { code, stderr } = runFormatGate(root)
+    assert.equal(code, 1, `rejected 丢了验收标准与风险却全绿：${stderr}`)
+    assert.match(stderr, /## Acceptance criteria/)
+    assert.match(stderr, /## Risks/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
   }
 })
 

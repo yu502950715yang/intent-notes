@@ -28,7 +28,7 @@ DSH 的项目级 skill 扫描根是 `<项目根>/.agents/skills/`；换别的 ha
 
 > 把 `<本仓库>\skills\intent-notes\` 整目录复制到本项目的 `.agents\skills\` 下，不要挑文件。
 
-必须是**整目录**：`scripts/` 里的模块互相 import，手挑几个文件会在运行时 `ERR_MODULE_NOT_FOUND`。放好后**开一个新会话**，agent 的 skill 目录里才会出现它。
+必须是**整目录**：`scripts/` 里的模块互相 import，手挑几个文件会在运行时 `ERR_MODULE_NOT_FOUND`。放好后**本会话即可见**（DSH 每一步都会刷新 skill 目录，实测无需新会话、无需重启）；换 harness 若未生效，再开一个新会话。
 
 ### 第二步：一句话让它开始记笔记
 
@@ -142,9 +142,9 @@ Status: implemented
 
 | 门禁 | 脚本 | 接的参数 | 守什么 |
 |---|---|---|---|
-| 1 结构 | `verify-note-tree.ts` | **notes 根**（省略取 `<cwd>/.agents/notes`） | 生命周期与分类闭集、目录深度、文件名形态、禁 `INDEX.md`、笔记间相对链接断链；notes 根与生命周期根**只拒绝其他 `.md`**（白名单外的 `.md` 判红），非 `.md` 文件目前静默通过；符号链接 / junction / 特殊文件报「无法校验（符号链接/junction/特殊文件）」而非静默跳过；空树仍退 0 |
-| 2 格式 | `verify-note-format.ts` | **notes 根** | 头三行、`Status` 与目录一致、`## Problem` 打头、必备节齐全、`implemented` / `archived` 禁提案用语、`Alternatives` 必写 |
-| 3 锚点 | `verify-note-anchors.ts` | **项目根**（省略取 `cwd`） | 仓库 / 分支 / commit **实时查 git**：分支不存在、commit 不在声明的分支上、声明的路径不是独立仓库根，都报错；`archived/` 整篇豁免 |
+| 1 结构 | `verify-note-tree.ts` | **notes 根**（省略取 `<cwd>/.agents/notes`） | 生命周期与分类闭集、目录深度、文件名形态、禁 `INDEX.md`、笔记间相对链接断链；notes 根与生命周期根**只拒绝其他 `.md`**（白名单外的 `.md` 判红），非 `.md` 文件目前静默通过；符号链接 / junction / 特殊文件报「无法校验（符号链接/junction/特殊文件）」而非静默跳过；空树仍退 0；`archived/` 整篇豁免链接校验（归档已冻结，不再跟着目标改名） |
+| 2 格式 | `verify-note-format.ts` | **notes 根** | 头三行、`Status` 与目录一致、`## Problem` 打头、必备节齐全（`rejected` 与 `proposed` 同骨架）、`implemented` / `archived` 禁提案用语、`Alternatives` 必写 |
+| 3 锚点 | `verify-note-anchors.ts` | **项目根**（省略取 `cwd`） | 仓库 / 分支 / commit **实时查 git**：分支不存在、commit 不在声明的分支上、声明的路径不是独立仓库根，都报错；`archived/` 整篇豁免；0 篇时与门禁 1/2 同口径，点明「未发现任何笔记」 |
 
 三条都是 **fail-closed**：读不到、查不到一律报错，绝不静默放绿。
 
@@ -192,7 +192,7 @@ intent-notes/
 │   ├── references/  (7)     # 格式细则、六分类判据、何时写、归档、自检、存量初始化、非代码工作目录
 │   ├── templates/   (5)     # 四种生命周期的填空模板 + notes/README.md 模板
 │   └── scripts/     (10)    # 三道门禁 + init + backfill + 5 个纯模块
-├── tests/                   # 9 个 spec（130 用例）
+├── tests/                   # 9 个 spec（155 用例）
 ├── docs/superpowers/        # 历史与当次 spec / plan（早期几份写于旧名 EvolveTrace 时，保留不改）
 ├── .superpowers/            # 开发账本（gitignored）
 └── package.json  tsconfig.json  README.md  .gitignore  .gitattributes
@@ -205,14 +205,15 @@ intent-notes/
 ## 已知限制
 
 - 部署必须**整目录复制**：`scripts/` 里的模块互相 import（如被门禁 import 的 `note-text.ts`），少一个就 `ERR_MODULE_NOT_FOUND`——fail-loud，不会静默
-- `config.yml` 的 `repos:` 段**键序不限**（`path:` / `name:` 谁先都行），但**不要写行内注释**（`#` 会被当成值的一部分）；段内的注释行必须与条目**同缩进**——顶格的 `#` 会终止整个段的解析，其后的仓库条目被静默丢弃（实测：后面声明的仓库被完全遗忘，退出码仍为 0）
-- `detectSubRepos` 只探**一层**直接子目录；更深层的仓库需手工往 `repos:` 补条目（`init` 对已存在的 `config.yml` 跳过不覆盖，不会抹掉你的补充）
+- `config.yml` 的 `repos:` 段**键序不限**（`path:` / `name:` 谁先都行），**注释行任意缩进都安全**（顶格也不再截断段解析）；但**不要写行内注释**：`#` 会被当成值的一部分，那一条 path 随即判「路径不存在」
+- `detectSubRepos` 只探**一层**直接子目录；更深层的仓库需手工往 `repos:` 补条目（`init` 对已存在的 `config.yml` 跳过不覆盖，不会抹掉你的补充）。junction 形式的子仓库按目录处理，会正常进 `config.yml` 与 `.gitignore`
 - `config.yml` 的 `sources:` 段**没有任何程序消费者**（`scripts/` 下没有候选筛选程序）：它只由 `init-core.ts` 写入，供人阅读、AI 遍历筛选
-- 笔记里引用的**文件是否存在由人工自检**，锚点门禁只管仓库 / 分支 / commit（`gitTracksFile` 是预留能力，尚未接入）
+- 笔记里引用的**文件是否存在由人工自检**，锚点门禁只管仓库 / 分支 / commit（`gitTracksFile` 是预留能力，尚未接入）。路径写成 `<仓库名>:<仓库内相对路径>`，多仓库下才说得清是哪个仓库的文件
 - **门禁查不了「该写却没写」**：那是语义判断，正则做不到。靠 `AGENTS.md` 规矩 + 子仓库指针预防、口头触发兜底、`backfill` 补救
 - 构建产物类的排除规则（`*.apk`、`.tmp-*` 之类）**不写进 `.gitignore` 模板**——通用工具不硬编码特定项目的模式，请自行添加
 - 部署副本里的 `scripts/*.ts` 可能在编辑器报 `ts(2591) 找不到名称 "node:fs"`——那是宿主项目没装 `@types/node`，**不影响运行**（Node 的类型剥离不做类型检查），不要为此改脚本
 - **非代码工作目录要求那台机器有 git**，且目录在**本地磁盘**（同步盘会损坏 `.git`）；git 缺失时脚本 fail-closed 报错，**不会**自行安装
+- **skill 副本会随 `.agents/` 进目标项目的版本控制**（`init` 的 `.gitignore` 片段只排除探测到的子仓库）：想让团队共享就照常提交；不想提交就自行把 `.agents/skills/` 加进 `.gitignore`
 
 ## 设计取舍
 
@@ -229,7 +230,7 @@ intent-notes/
 
 ```powershell
 npm install          # 仅开发需要：typescript + @types/node；仓库未提交 lockfile，且 typescript@^7.0.2 是 caret 范围，安装结果不可复现
-npm test             # node --test "tests/*.spec.ts" → 130 用例
+npm test             # node --test "tests/*.spec.ts" → 155 用例
 npm run typecheck    # tsc --noEmit（strict，19 个文件）
 ```
 
