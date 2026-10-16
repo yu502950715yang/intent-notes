@@ -12,7 +12,7 @@
  * 用法：node scripts/verify-note-seal.ts [notes 根] [--write | --reseal <rel> --reason <文本> | --forget <rel> --reason <文本>]
  * （省略 notes 根则取 <cwd>/.agents/notes；门禁 4 与门禁 1/2 同口径接 notes 根）
  */
-import { existsSync } from 'node:fs'
+import { readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { checkSeal, forgetOne, resealOne, writeSeal } from './seal-core.ts'
 
@@ -56,8 +56,11 @@ if (flags.has('--reseal') && flags.has('--forget')) {
   console.error('verify-note-seal: --reseal 与 --forget 不能同时使用')
   process.exit(1)
 }
-if (!existsSync(notesRoot)) {
-  console.error(`verify-note-seal: ${notesRoot} — 不存在或不可读`)
+// notes 根必须是可读目录：只判 existsSync 会把「给了普通文件」当成空归档树而静默退 0，readdirSync 同时兜住不存在、非目录与不可读
+try {
+  readdirSync(notesRoot)
+} catch {
+  console.error(`verify-note-seal: ${notesRoot} — 不存在、不是目录或不可读`)
   process.exit(1)
 }
 
@@ -97,7 +100,7 @@ const { errors, sealed } = checkSeal(notesRoot)
 if (errors.length === 0) {
   console.log(
     sealed === 0
-      ? 'verify-note-seal: 归档树为空，封印无需校验（空树属正常，仍退 0）。'
+      ? 'verify-note-seal: 未发现归档笔记，请确认根目录正确（archived/ 为空属正常，封印无需校验，仍退 0）。'
       : `verify-note-seal: 检查 ${sealed} 篇归档笔记，封印全部一致。`,
   )
   process.exit(0)

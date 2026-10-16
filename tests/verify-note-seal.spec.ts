@@ -64,6 +64,26 @@ test('notes 根不存在 → fail-closed', () => {
   rmSync(join(tmpdir(), 'intent-notes-nonexistent-xyz'), { recursive: true, force: true })
 })
 
+test('notes 根是存在的普通文件 → fail-closed 退 1', () => {
+  const holder = mkdtempSync(join(tmpdir(), 'intent-notes-sealgate-'))
+  const file = join(holder, 'not-a-dir.md')
+  writeFileSync(file, '# Agent Note: a\n')
+  const r = run([file])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /verify-note-seal: /)
+  rmSync(holder, { recursive: true, force: true })
+})
+
+test('notes 根是可读目录但无 archived/ → 空树退 0 并警示确认根目录', () => {
+  // 形如把项目根当 notes 根传入（门禁 3 的口径）：目录存在、archived/ 不存在
+  const root = mkdtempSync(join(tmpdir(), 'intent-notes-sealgate-'))
+  mkdirSync(join(root, '.agents', 'notes'), { recursive: true })
+  const r = run([root])
+  assert.equal(r.code, 0, r.stderr)
+  assert.match(r.stdout, /请确认根目录正确/)
+  rmSync(root, { recursive: true, force: true })
+})
+
 test('未知参数退 1 且给出用法', () => {
   const r = run(['--nope'])
   assert.equal(r.code, 1)
