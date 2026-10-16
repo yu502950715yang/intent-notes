@@ -538,8 +538,9 @@ export function checkSeal(notesRoot: string): { errors: string[]; sealed: number
   const { files, errors } = listSealedFiles(notesRoot)
   const { manifest, error } = readManifest(notesRoot)
   if (error !== undefined) return { errors: [...errors, error], sealed: 0 }
-  if (files.length === 0) return { errors, sealed: 0 }
   if (manifest === undefined) {
+    // 空归档树 + 无清单是正常状态；有文件却没清单才是漏了 --write
+    if (files.length === 0) return { errors, sealed: 0 }
     errors.push(
       `seal: ${ARCHIVE_DIR} — 归档树未封存（缺少 ${ARCHIVE_DIR}/${SEAL_MANIFEST}）；先跑 verify-note-seal.ts --write`,
     )
@@ -781,6 +782,15 @@ function valueOf(name: string): string | undefined {
   if (inline !== undefined) return inline.slice(name.length + 1)
   const i = args.indexOf(name)
   return i >= 0 ? args[i + 1] : undefined
+}
+
+// 拼错的 flag 不能被静默当成 notes 根：那会报「根不存在」，离真正原因很远
+const KNOWN_FLAGS = ['--write', '--reseal', '--forget', '--reason']
+for (const f of flags) {
+  if (!KNOWN_FLAGS.some(k => f === k || f.startsWith(`${k}=`))) {
+    console.error(`verify-note-seal: 未知参数 ${f}\n${USAGE}`)
+    process.exit(1)
+  }
 }
 
 const resealPath = valueOf('--reseal')
