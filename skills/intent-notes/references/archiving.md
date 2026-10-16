@@ -46,7 +46,7 @@ node "<skill-dir>/scripts/verify-note-seal.ts" "<notes 根>" --forget <class>/<f
 
 门禁 4 只认 `artifacts`：`--reseal` 把哈希更新为新值，`--forget` 删掉条目，`history` 仅供审计、不参与判定——否则「有人回滚了 manifest 而文件是新内容」这类真实的不一致也会被放行。
 
-**存量项目首次启用**：`implemented/` 里已有归档笔记时，先跑一次 `--write` 把整棵树封上（见 `bootstrap-existing-project.md`）。
+**存量项目首次启用**：项目里已有归档笔记时，先跑一次 `--write` 把整棵树封上（见 `bootstrap-existing-project.md`）。
 
 ## 删除，而不是归档
 
