@@ -284,6 +284,7 @@ test('新增一篇归档后 --write 只追加，既有条目不动', () => {
   const root = scaffold(ARCHIVED)
   writeSeal(root)
   const second = 'feature/2026-02-02-b.md'
+  mkdirSync(join(root, 'archived', 'feature'), { recursive: true })
   writeFileSync(join(root, 'archived', second), '# Agent Note: b\n\nStatus: implemented\nArchived: 2026-02-03\n')
   const { errors, added } = writeSeal(root)
   assert.deepEqual(errors, [])
@@ -410,8 +411,8 @@ Expected: FAIL — 找不到 `seal-core.ts`
  * 纯模块：无模块级副作用，CLI 与 spec 都可安全 import。
  */
 import { createHash } from 'node:crypto'
-import { readFileSync, readdirSync, writeFileSync, existsSync, type Dirent } from 'node:fs'
-import { join, statSync } from 'node:path'
+import { readFileSync, readdirSync, writeFileSync, existsSync, statSync, type Dirent } from 'node:fs'
+import { join } from 'node:path'
 import { ARCHIVE_DIR } from './note-tree.ts'
 
 /** 封印清单文件名，位于 `archived/` 根下。 */
