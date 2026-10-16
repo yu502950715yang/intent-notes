@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -19,11 +19,16 @@ function run(args: string[]): { code: number; stdout: string; stderr: string } {
   return { code: r.status ?? -1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' }
 }
 
-/** 取出 hook 里 `SKILL="..."` 的值，用于断言脚本路径的写法。 */
+/** 取出 hook 里 `SKILL='…'` 的值（单引号赋值，内嵌单引号按 `'\''` 转义），用于断言脚本路径的写法。 */
 function skillPathOf(hook: string): string {
-  const m = /^SKILL="(.+)"$/m.exec(hook)
+  const m = /^SKILL='(.*)'$/m.exec(hook)
   assert.ok(m !== null, 'hook 里缺少 SKILL 赋值行')
-  return m[1]
+  return (m[1] ?? '').replace(/'\\''/g, "'")
+}
+
+/** git 不可用的环境里跳过依赖真实仓库的用例，而不是假绿。 */
+function gitAvailable(): boolean {
+  return spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0
 }
 
 test('无 .git → 报先跑 init 并退 1', () => {
@@ -45,6 +50,10 @@ test('写入 hook，含两段按路径触发与 node 缺失时的拒绝', () => 
   assert.match(hook, /verify-note-tree\.ts/)
   assert.match(hook, /verify-note-format\.ts/)
   assert.match(hook, /command -v node/)
+  // 封印清单必须与笔记一起进 index，否则 commit 里的 manifest 与笔记不符
+  assert.match(hook, /git diff --quiet -- "\$MANIFEST"/)
+  assert.match(hook, /git ls-files --error-unmatch -- "\$MANIFEST"/)
+  assert.match(hook, /archived\/manifest\.json 未 git add/)
   rmSync(root, { recursive: true, force: true })
 })
 
@@ -125,5 +134,83 @@ test('pre-commit 是目录 → 报错退 1，不抛裸 EISDIR', () => {
   assert.equal(r.code, 1)
   assert.match(r.stderr, /不是普通文件/)
   assert.doesNotMatch(r.stderr, /EISDIR/)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('core.hooksPath 指向别处 → 报错退 1 且不落盘（否则 git 根本读不到）', (t) => {
+  if (!gitAvailable()) {
+    t.skip('本机没有 git')
+    return
+  }
+  const root = mkdtempSync(join(tmpdir(), 'intent-notes-hookspath-'))
+  spawnSync('git', ['-C', root, 'init'], { encoding: 'utf8' })
+  spawnSync('git', ['-C', root, 'config', 'core.hooksPath', '.husky'], { encoding: 'utf8' })
+  const r = run([root])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /core\.hooksPath/)
+  assert.match(r.stderr, /\.husky/)
+  assert.equal(existsSync(join(root, '.git', 'hooks', 'pre-commit')), false)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('pre-commit 是指向项目外的悬空链接 → 拒绝，不沿链接写出去', (t) => {
+  const root = freshProject()
+  const outside = mkdtempSync(join(tmpdir(), 'intent-notes-outside-'))
+  const victim = join(outside, 'pwned')
+  try {
+    // 目标不存在：existsSync 跟随链接会返回 false，老代码会一路 writeFileSync 写出去
+    symlinkSync(victim, join(root, '.git', 'hooks', 'pre-commit'), 'file')
+  } catch (e) {
+    t.skip(`本机无法创建文件型符号链接（${(e as NodeJS.ErrnoException).code}）`)
+    rmSync(root, { recursive: true, force: true })
+    rmSync(outside, { recursive: true, force: true })
+    return
+  }
+  const r = run([root])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /不是普通文件/)
+  assert.equal(existsSync(victim), false, '项目外不得被创建')
+  rmSync(root, { recursive: true, force: true })
+  rmSync(outside, { recursive: true, force: true })
+})
+
+test('.git 是链接到真实目录 → 放行（不是 gitdir 指针文件）', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'intent-notes-gitlink-'))
+  const realGit = join(root, 'real-git')
+  mkdirSync(join(realGit, 'hooks'), { recursive: true })
+  try {
+    symlinkSync(realGit, join(root, '.git'), process.platform === 'win32' ? 'junction' : 'dir')
+  } catch (e) {
+    t.skip(`本机无法创建目录型链接（${(e as NodeJS.ErrnoException).code}）`)
+    rmSync(root, { recursive: true, force: true })
+    return
+  }
+  const r = run([root])
+  assert.equal(r.code, 0, r.stderr)
+  assert.equal(existsSync(join(realGit, 'hooks', 'pre-commit')), true)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('.git/hooks 是普通文件 → 拒绝写入', () => {
+  const root = mkdtempSync(join(tmpdir(), 'intent-notes-hooksfile-'))
+  mkdirSync(join(root, '.git'), { recursive: true })
+  writeFileSync(join(root, '.git', 'hooks'), 'not a directory\n')
+  const r = run([root])
+  assert.equal(r.code, 1)
+  assert.match(r.stderr, /不是普通目录/)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('skill 路径含 $ 时用单引号赋值（shell 不展开，反引号同理）', () => {
+  const root = freshProject()
+  const skillDir = join(root, 'sk$ill', 'intent-notes')
+  mkdirSync(join(skillDir, 'scripts'), { recursive: true })
+  cpSync(scriptPath, join(skillDir, 'scripts', 'install-hook.ts'))
+  const r = spawnSync('node', [join(skillDir, 'scripts', 'install-hook.ts'), root], { encoding: 'utf8', cwd: repoRoot })
+  assert.equal(r.status, 0, r.stderr)
+  const hook = readFileSync(join(root, '.git', 'hooks', 'pre-commit'), 'utf8')
+  const line = hook.split('\n').find(l => l.startsWith('SKILL=')) ?? ''
+  assert.equal(line, "SKILL='sk$ill/intent-notes'")
+  assert.equal(skillPathOf(hook), 'sk$ill/intent-notes')
   rmSync(root, { recursive: true, force: true })
 })

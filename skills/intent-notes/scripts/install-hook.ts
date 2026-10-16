@@ -6,7 +6,8 @@
  *
  * 用法：node scripts/install-hook.ts <项目根> [--dry-run] [--force]
  */
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 
 const USAGE = '用法：node scripts/install-hook.ts <项目根> [--dry-run] [--force]'
@@ -49,11 +50,16 @@ const skillPath = rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)
 
 const hookPath = join(projectRoot, '.git', 'hooks', 'pre-commit')
 
+/** sh 单引号串：路径里可能有 `$` 或反引号，双引号赋值会在 shell 里被展开；内嵌单引号按 `'\''` 转义。 */
+function shQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`
+}
+
 const HOOK = `#!/bin/sh
 # Intent Notes pre-commit：笔记闸门（由 install-hook.ts 生成）
 # 按路径触发：未触碰 .agents/notes/ 时零开销。
 set -e
-SKILL="${skillPath}"
+SKILL=${shQuote(skillPath)}
 NOTES=".agents/notes"
 
 if ! command -v node >/dev/null 2>&1; then
@@ -63,6 +69,12 @@ fi
 
 if ! git diff --cached --quiet -- "$NOTES/archived"; then
   node "$SKILL/scripts/verify-note-seal.ts" "$NOTES" || exit 1
+  # 封印清单必须随本次提交一起进 index，否则 commit 里的 manifest 与笔记不符，新 clone 一律判红
+  MANIFEST="$NOTES/archived/manifest.json"
+  if ! git diff --quiet -- "$MANIFEST" || { [ -f "$MANIFEST" ] && ! git ls-files --error-unmatch -- "$MANIFEST" >/dev/null 2>&1; }; then
+    echo "intent-notes: archived/manifest.json 未 git add，封印不会随本次提交生效" >&2
+    exit 1
+  fi
 fi
 
 if ! git diff --cached --quiet -- "$NOTES"; then
@@ -71,8 +83,9 @@ if ! git diff --cached --quiet -- "$NOTES"; then
 fi
 `
 
-// worktree/子模块的 `.git` 是指针文件，钩子不在那里；照写会抛裸 ENOTDIR
-if (!lstatSync(gitDir).isDirectory()) {
+// worktree/子模块的 `.git` 是指针文件，钩子不在那里；照写会抛裸 ENOTDIR。
+// 用 statSync（跟随链接）而非 lstatSync：指向真实目录的符号链接/junction 是合法布局，不该误判为指针文件
+if (!statSync(gitDir).isDirectory()) {
   console.error(`install-hook: ${gitDir} 是 gitdir 指针文件（worktree/子模块），钩子不在那里，拒绝写入。`)
   console.error('  请改在公共 git 目录（git rev-parse --git-common-dir）的 hooks/ 下手工接入：')
   console.error('')
@@ -80,13 +93,30 @@ if (!lstatSync(gitDir).isDirectory()) {
   process.exit(1)
 }
 
-// 读之前先验类型：pre-commit 是目录/链接时 readFileSync 会抛裸 EISDIR，且链接会把 hook 写到项目外
-const hookExists = existsSync(hookPath)
-if (hookExists && !lstatSync(hookPath).isFile()) {
-  console.error(`install-hook: ${hookPath} 已存在但不是普通文件，拒绝写入`)
+// husky / lefthook / pre-commit 框架会把 core.hooksPath 指到别处，那时 git 根本不读 .git/hooks/：
+// 写进去只会静默空转，还不如在这里挡住
+const hooksPathProbe = spawnSync('git', ['-C', projectRoot, 'config', '--get', 'core.hooksPath'], { encoding: 'utf8' })
+const hooksPath = hooksPathProbe.stdout?.trim() ?? ''
+if (hooksPath !== '') {
+  console.error(`install-hook: 本项目配置了 core.hooksPath=${hooksPath}，git 不会读 .git/hooks/，装在那里等于空转。`)
+  console.error('  把 hook 装到该目录（或改用它自己的机制接入），或者先取消配置：git config --unset core.hooksPath')
   process.exit(1)
 }
-const existing = hookExists ? readFileSync(hookPath, 'utf8') : undefined
+
+// 读之前先验类型：pre-commit 是目录/链接时 readFileSync 会抛裸 EISDIR；悬空符号链接更危险——
+// existsSync 跟随链接、对悬空链接返回 false，会一路 writeFileSync 把 hook 写到项目外
+const hookStat = lstatSync(hookPath, { throwIfNoEntry: false })
+if (hookStat !== undefined && !hookStat.isFile()) {
+  console.error(`install-hook: ${hookPath} 已存在但不是普通文件（含符号链接/junction），拒绝写入`)
+  process.exit(1)
+}
+const hooksDir = join(projectRoot, '.git', 'hooks')
+const hooksDirStat = lstatSync(hooksDir, { throwIfNoEntry: false })
+if (hooksDirStat !== undefined && !hooksDirStat.isDirectory()) {
+  console.error(`install-hook: ${hooksDir} 已存在但不是普通目录（含符号链接/junction），拒绝写入`)
+  process.exit(1)
+}
+const existing = hookStat !== undefined ? readFileSync(hookPath, 'utf8') : undefined
 if (existing === HOOK) {
   console.log(`install-hook: 已安装（内容一致），跳过。${hookPath}`)
   process.exit(0)
@@ -105,7 +135,7 @@ if (dryRun) {
   process.exit(0)
 }
 
-mkdirSync(join(projectRoot, '.git', 'hooks'), { recursive: true })
+mkdirSync(hooksDir, { recursive: true })
 writeFileSync(hookPath, HOOK, 'utf8')
 // Windows 上 chmod 无效但不报错；Git for Windows 不看权限位
 chmodSync(hookPath, 0o755)
