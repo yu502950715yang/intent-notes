@@ -168,6 +168,81 @@ test('--forget 删除条目并留痕；文件仍在时拒绝', () => {
   rmSync(root, { recursive: true, force: true })
 })
 
+test('哈希对象是归一化行尾的文本：LF 与 CRLF 两种字节互相视为未改动', () => {
+  const lf = '# Agent Note: a\n\nStatus: implemented\nArchived: 2026-01-02\n\n## Problem\n\nx\n'
+  const crlf = lf.replace(/\n/g, '\r\n')
+
+  // 先用 LF 字节封印，再被 checkout 成 CRLF（core.autocrlf=true 的常见结果）
+  const rootA = scaffold({ [`archived/${NOTE}`]: lf })
+  writeSeal(rootA)
+  writeFileSync(join(rootA, 'archived', NOTE), crlf)
+  assert.deepEqual(checkSeal(rootA).errors, [], 'CRLF 检出不得被判「内容已改动」')
+  assert.deepEqual(writeSeal(rootA).errors, [], '--write 也不得报「既有封存条目已改动」')
+  rmSync(rootA, { recursive: true, force: true })
+
+  // 反向：用 CRLF 字节封印，工作树回到 LF
+  const rootB = scaffold({ [`archived/${NOTE}`]: crlf })
+  writeSeal(rootB)
+  writeFileSync(join(rootB, 'archived', NOTE), lf)
+  assert.deepEqual(checkSeal(rootB).errors, [])
+  rmSync(rootB, { recursive: true, force: true })
+})
+
+test('空归档树 + headHasSeal=false（真首次启用）照常退 0', () => {
+  const root = scaffold({ 'implemented/feature/2026-01-01-x.md': 'x' })
+  assert.deepEqual(checkSeal(root, { headHasSeal: false }).errors, [])
+  // 走到过封印的项目里整棵树连 manifest 一起没了 → 判红（整树删除不能靠「空树正常」洗白）
+  assert.match(checkSeal(root, { headHasSeal: true }).errors.join('\n'), /曾存在于版本控制中/)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('HEAD 里曾有封印而磁盘上没有 manifest → 判红，仅 --first-seal 放行 --write', () => {
+  const root = scaffold(ARCHIVED)
+  const manifestAbs = join(root, 'archived', SEAL_MANIFEST)
+  assert.match(checkSeal(root, { headHasSeal: true }).errors.join('\n'), /曾存在于版本控制中/)
+  const blocked = writeSeal(root, { headHasSeal: true })
+  assert.equal(blocked.errors.length, 1)
+  assert.match(blocked.errors[0] ?? '', /--first-seal/)
+  assert.deepEqual(blocked.added, [])
+  assert.equal(existsSync(manifestAbs), false, '被拒时不得落盘')
+
+  // 显式逃生门：确实要重新起封印
+  assert.deepEqual(writeSeal(root, { headHasSeal: true, firstSeal: true }).errors, [])
+  assert.deepEqual(checkSeal(root, { headHasSeal: true }).errors, [])
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('manifest 被改写成空 artifacts → 疑似重置，--write 拒绝按篡改后的字节重封', () => {
+  const root = scaffold(ARCHIVED)
+  writeSeal(root)
+  const emptied = '{\n  "artifacts": {}\n}\n'
+  writeFileSync(join(root, 'archived', SEAL_MANIFEST), emptied)
+  const { errors, added } = writeSeal(root, { headHasSeal: true })
+  assert.equal(errors.length, 1)
+  assert.match(errors[0] ?? '', /疑似被重置/)
+  assert.deepEqual(added, [])
+  assert.equal(readFileSync(join(root, 'archived', SEAL_MANIFEST), 'utf8'), emptied, '--write 不得覆盖')
+  // 清空后仍要能走显式逃生门重新封印
+  assert.deepEqual(writeSeal(root, { headHasSeal: true, firstSeal: true }).errors, [])
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('history 不参与判定：artifacts 被人为回滚成旧哈希 → 判「内容已改动」', () => {
+  const root = scaffold(ARCHIVED)
+  writeSeal(root)
+  const oldHash = manifestOf(root).artifacts[NOTE]
+  writeFileSync(join(root, 'archived', NOTE), '# Agent Note: a 修正\n\nStatus: implemented\nArchived: 2026-01-02\n')
+  assert.deepEqual(resealOne(root, NOTE, '日期写错', '2026-03-01').errors, [])
+  // 回滚 artifacts、留下 reseal 记录：若判定读 history，这次回滚就会被放行
+  const rolled = manifestOf(root)
+  rolled.artifacts[NOTE] = oldHash
+  writeFileSync(join(root, 'archived', SEAL_MANIFEST), `${JSON.stringify(rolled, null, 2)}\n`)
+  const { errors } = checkSeal(root)
+  assert.equal(errors.length, 1)
+  assert.match(errors[0] ?? '', /内容已改动/)
+  rmSync(root, { recursive: true, force: true })
+})
+
 test('archived/ 下的目录型链接 → 报错不跟随，绝不封印扫描根之外的笔记', (t) => {
   const root = scaffold(ARCHIVED)
   // 链接指向 archived/ 之外的目录，用来证明「不跟随」：跟随会把外部笔记一并卷进封印

@@ -1,9 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
+
+// 脚本路径相对仓库根解析：不锁 cwd 的话，从 tests/ 目录跑会整片失败
+const repoRoot = resolve(import.meta.dirname, '..')
 
 function scaffold(notes: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), 'intent-notes-sealgate-'))
@@ -16,7 +19,10 @@ function scaffold(notes: Record<string, string>): string {
 }
 
 function run(args: string[]): { code: number; stdout: string; stderr: string } {
-  const r = spawnSync('node', ['skills/intent-notes/scripts/verify-note-seal.ts', ...args], { encoding: 'utf8' })
+  const r = spawnSync('node', ['skills/intent-notes/scripts/verify-note-seal.ts', ...args], {
+    encoding: 'utf8',
+    cwd: repoRoot,
+  })
   return { code: r.status ?? -1, stdout: r.stdout ?? '', stderr: r.stderr }
 }
 
@@ -88,4 +94,35 @@ test('未知参数退 1 且给出用法', () => {
   const r = run(['--nope'])
   assert.equal(r.code, 1)
   assert.match(r.stderr, /用法/)
+})
+
+test('模式旗标只认裸形式：--write=1 退 1，不再静默降级成只校验', () => {
+  const root = scaffold(ARCHIVED)
+  for (const bad of ['--write=1', '--first-seal=1', '--reseal=bug-fix/2026-01-01-a.md', '--forget=bug-fix/2026-01-01-a.md']) {
+    const r = run([root, bad])
+    assert.equal(r.code, 1, `${bad} 应退 1`)
+    assert.match(r.stderr, /不接受值/)
+    assert.doesNotMatch(r.stdout, /检查/)
+  }
+  assert.equal(existsSync(join(root, 'archived', 'manifest.json')), false, '拒绝时不得落盘')
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('--reason= 的内联形式必须保留，--first-seal 只能与 --write 连用', () => {
+  const root = scaffold(ARCHIVED)
+  run([root, '--write'])
+  const note = join(root, 'archived', 'bug-fix', '2026-01-01-a.md')
+  writeFileSync(note, '# Agent Note: a 改\n\nStatus: implemented\nArchived: 2026-01-02\n')
+  assert.equal(run([root, '--reseal', 'bug-fix/2026-01-01-a.md', '--reason=日期写错']).code, 0)
+  const bad = run([root, '--first-seal'])
+  assert.equal(bad.code, 1)
+  assert.match(bad.stderr, /只能与 --write 连用/)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('非 git 仓库里 --write --first-seal 照常退 0（探测不到 HEAD 不误伤首次启用）', () => {
+  const root = scaffold(ARCHIVED)
+  assert.equal(run([root, '--write', '--first-seal']).code, 0)
+  assert.equal(run([root]).code, 0)
+  rmSync(root, { recursive: true, force: true })
 })

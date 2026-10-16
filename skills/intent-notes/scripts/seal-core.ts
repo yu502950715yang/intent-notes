@@ -5,12 +5,17 @@
  * 操作，manifest 随即失去意义。唯一的例外通道是 reseal（改内容）与 forget（撤销误归档），
  * 两者都直接改写 artifacts，并在 history 留痕供审计；history 不参与判定。
  *
- * 纯模块：无模块级副作用，CLI 与 spec 都可安全 import。
+ * 只追加 manifest 的语义移植自 DeepSeek Harness 的 `verify-archived-agent-notes.ts`（MIT,
+ * Copyright (c) 2026 DeepSeek）。
+ *
+ * 纯模块：无模块级副作用，CLI 与 spec 都可安全 import；不 spawn 子进程——「HEAD 里是否有封印」
+ * 由 CLI 层用 git 算好，经 `SealOptions` 注入。
  */
 import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync, writeFileSync, existsSync, type Dirent } from 'node:fs'
 import { join } from 'node:path'
 import { ARCHIVE_DIR } from './note-tree.ts'
+import { toLines } from './note-text.ts'
 
 /** 封印清单文件名，位于 `archived/` 根下。 */
 export const SEAL_MANIFEST = 'manifest.json'
@@ -32,6 +37,36 @@ export interface SealManifest {
   version: number
   artifacts: Record<string, string>
   history: SealHistoryEntry[]
+}
+
+/** 由调用方（CLI 层）用 git 探测后注入的事实；省略即退化为「从不曾封印」。 */
+export interface SealOptions {
+  /** HEAD 里已存在 `archived/manifest.json`：封印一旦进过版本控制，磁盘上没有 manifest 就是被删。 */
+  headHasSeal?: boolean
+  /** `--first-seal`：仅在确实要在一棵曾被封印的树上重新起封印时显式放行。 */
+  firstSeal?: boolean
+}
+
+/**
+ * 「manifest 被删 / 被重置」的守卫。
+ *
+ * 只看磁盘分不清「从来没有过归档」与「归档被删光了」，所以要靠 HEAD 里是否有过封印来判定；
+ * 同理，把 manifest 改写成 `{"artifacts":{}}` 后重跑 `--write` 会按被篡改的字节重封、毫无痕迹，
+ * 因此「一条磁盘产物都没记录」也算被重置。
+ */
+function manifestResetError(
+  manifest: SealManifest | undefined,
+  files: string[],
+  opts: SealOptions,
+): string | undefined {
+  if (opts.headHasSeal !== true || opts.firstSeal === true) return undefined
+  if (manifest === undefined) {
+    return `seal: ${ARCHIVE_DIR} — 归档封印曾存在于版本控制中，现在磁盘上没有 ${ARCHIVE_DIR}/${SEAL_MANIFEST}；确需重新封印请显式加 --first-seal`
+  }
+  if (files.length > 0 && files.every(rel => manifest.artifacts[rel] === undefined)) {
+    return `seal: ${ARCHIVE_DIR} — ${ARCHIVE_DIR}/${SEAL_MANIFEST} 不再记录任何磁盘上的产物（疑似被重置）；确需重新封印请显式加 --first-seal`
+  }
+  return undefined
 }
 
 /** archived/ 的绝对路径。 */
@@ -77,9 +112,14 @@ export function listSealedFiles(notesRoot: string): { files: string[]; errors: s
   return { files: files.sort(), errors }
 }
 
-/** 文件内容的 sha256（小写 hex）。 */
+/**
+ * 文件内容的 sha256（小写 hex），哈希对象是**归一化行尾后**的文本。
+ *
+ * 与门禁 2 同口径：`core.autocrlf=true` 的机器上，同一篇笔记在 checkout/clone 后会变成
+ * CRLF；按原始字节哈希会把普通检出误报成「内容已改动」。
+ */
 export function hashFile(abs: string): string {
-  return createHash('sha256').update(readFileSync(abs)).digest('hex')
+  return createHash('sha256').update(toLines(readFileSync(abs, 'utf8')).join('\n')).digest('hex')
 }
 
 /** 读清单。不存在时 manifest 为 undefined 且无 error；存在但不可解析时报 error。 */
@@ -121,11 +161,13 @@ function writeManifest(notesRoot: string, m: SealManifest): void {
 }
 
 /** 门禁 4 的核心：逐条比对磁盘与清单，返回全部违规。 */
-export function checkSeal(notesRoot: string): { errors: string[]; sealed: number } {
+export function checkSeal(notesRoot: string, opts: SealOptions = {}): { errors: string[]; sealed: number } {
   const { files, errors } = listSealedFiles(notesRoot)
   const { manifest, error } = readManifest(notesRoot)
   if (error !== undefined) return { errors: [...errors, error], sealed: 0 }
   if (manifest === undefined) {
+    const reset = manifestResetError(manifest, files, opts)
+    if (reset !== undefined) return { errors: [...errors, reset], sealed: 0 }
     // 空归档树 + 无清单是正常状态；有文件却没清单才是漏了 --write
     if (files.length === 0) return { errors, sealed: 0 }
     errors.push(
@@ -156,12 +198,15 @@ export function checkSeal(notesRoot: string): { errors: string[]; sealed: number
  * `--write`：封印全部未记录产物。
  *
  * 先证明既有条目一条未变，再仅追加——任何既有条目哈希不符即整体报错且**不做任何写入**，
- * 否则「先改文件再 --write」就会静默把改动洗成合法。
+ * 否则「先改文件再 --write」就会静默把改动洗成合法。HEAD 里曾有封印时，manifest 被删/被重置
+ * 同样报错（需 `--first-seal` 显式放行），否则「删掉整棵归档树重跑 --write」即可洗白。
  */
-export function writeSeal(notesRoot: string): { errors: string[]; added: string[] } {
+export function writeSeal(notesRoot: string, opts: SealOptions = {}): { errors: string[]; added: string[] } {
   const { files, errors } = listSealedFiles(notesRoot)
   const { manifest, error } = readManifest(notesRoot)
   if (error !== undefined) return { errors: [...errors, error], added: [] }
+  const reset = manifestResetError(manifest, files, opts)
+  if (reset !== undefined) return { errors: [...errors, reset], added: [] }
   const current: SealManifest = manifest ?? { version: SEAL_VERSION, artifacts: {}, history: [] }
   const added: string[] = []
   for (const rel of files) {

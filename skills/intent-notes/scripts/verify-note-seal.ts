@@ -6,18 +6,24 @@
  *   --reseal <rel> --reason <文本>   修改已封存内容（留痕）
  *   --forget <rel> --reason <文本>   撤销一次误归档（文件需先删除，留痕）
  *
+ * `--first-seal` 只与 `--write` 连用：HEAD 里曾有 manifest 而磁盘上没有时，默认判红
+ * （否则「删掉整棵归档树 / 删掉 manifest 再重封」即可洗白），确认要重新起封印才显式放行。
+ *
  * 纯 CLI、不导出任何东西，因此不需要 `import.meta.url === argv[1]` 入口守卫——
  * 那个守卫在脚本路径经 symlink/junction 到达时会 fail-open，整段 CLI 被跳过并 exit 0。
  *
- * 用法：node scripts/verify-note-seal.ts [notes 根] [--write | --reseal <rel> --reason <文本> | --forget <rel> --reason <文本>]
+ * 用法：node scripts/verify-note-seal.ts [notes 根] [--write [--first-seal] | --reseal <rel> --reason <文本> | --forget <rel> --reason <文本>]
  * （省略 notes 根则取 <cwd>/.agents/notes；门禁 4 与门禁 1/2 同口径接 notes 根）
  */
 import { readdirSync } from 'node:fs'
-import { join, resolve } from 'node:path'
-import { checkSeal, forgetOne, resealOne, writeSeal } from './seal-core.ts'
+import { join, relative, resolve } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import {
+  archiveRoot, checkSeal, forgetOne, resealOne, writeSeal, SEAL_MANIFEST,
+} from './seal-core.ts'
 
 const USAGE =
-  '用法：node scripts/verify-note-seal.ts [notes 根] [--write | --reseal <rel> --reason <文本> | --forget <rel> --reason <文本>]'
+  '用法：node scripts/verify-note-seal.ts [notes 根] [--write [--first-seal] | --reseal <rel> --reason <文本> | --forget <rel> --reason <文本>]'
 
 const args = process.argv.slice(2)
 const flags = new Set(args.filter(a => a.startsWith('--')))
@@ -30,13 +36,41 @@ function valueOf(name: string): string | undefined {
   return i >= 0 ? args[i + 1] : undefined
 }
 
+/**
+ * HEAD 里是否已有 `archived/manifest.json`。
+ *
+ * 读不到（不在 git 仓库内、git 不可用、notes 根在仓库外）一律当 false——退化为「从不曾封印」，
+ * 不因为探测失败就拒绝真正的首次启用。git 探测必须在 CLI 层：`seal-core.ts` 保持纯模块。
+ */
+function headHasSeal(notesRoot: string): boolean {
+  const top = spawnSync('git', ['-C', notesRoot, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' })
+  const repo = top.status === 0 ? top.stdout.trim() : ''
+  if (repo === '') return false
+  const rel = relative(resolve(repo), join(archiveRoot(notesRoot), SEAL_MANIFEST)).replace(/\\/g, '/')
+  if (rel === '' || rel.startsWith('..')) return false
+  const probe = spawnSync('git', ['-C', repo, 'cat-file', '-e', `HEAD:${rel}`], { encoding: 'utf8' })
+  return probe.status === 0
+}
+
 // 拼错的 flag 不能被静默当成 notes 根：那会报「根不存在」，离真正原因很远
-const KNOWN_FLAGS = ['--write', '--reseal', '--forget', '--reason']
+const KNOWN_FLAGS = ['--write', '--reseal', '--forget', '--reason', '--first-seal']
+// 模式旗标只认裸形式：`--write=1` 曾被白名单放行、又匹配不到 flags.has('--write')，
+// 于是退 0 且打印校验文案，只看退出码的调用方会以为已经封印
+const BARE_FLAGS = ['--write', '--reseal', '--forget', '--first-seal']
 for (const f of flags) {
   if (!KNOWN_FLAGS.some(k => f === k || f.startsWith(`${k}=`))) {
     console.error(`verify-note-seal: 未知参数 ${f}\n${USAGE}`)
     process.exit(1)
   }
+  const valued = BARE_FLAGS.find(k => f.startsWith(`${k}=`))
+  if (valued !== undefined) {
+    console.error(`verify-note-seal: ${valued} 不接受值；理由请写成 --reason=<文本>\n${USAGE}`)
+    process.exit(1)
+  }
+}
+if (flags.has('--first-seal') && !flags.has('--write')) {
+  console.error(`verify-note-seal: --first-seal 只能与 --write 连用\n${USAGE}`)
+  process.exit(1)
 }
 
 const resealPath = valueOf('--reseal')
@@ -65,7 +99,10 @@ try {
 }
 
 if (flags.has('--write')) {
-  const { errors, added } = writeSeal(notesRoot)
+  const { errors, added } = writeSeal(notesRoot, {
+    headHasSeal: headHasSeal(notesRoot),
+    firstSeal: flags.has('--first-seal'),
+  })
   if (errors.length > 0) {
     console.error('verify-note-seal --write 拒绝执行：')
     for (const e of errors) console.error(`  ${e}`)
@@ -96,7 +133,7 @@ if (flags.has('--reseal') || flags.has('--forget')) {
   process.exit(0)
 }
 
-const { errors, sealed } = checkSeal(notesRoot)
+const { errors, sealed } = checkSeal(notesRoot, { headHasSeal: headHasSeal(notesRoot) })
 if (errors.length === 0) {
   console.log(
     sealed === 0
