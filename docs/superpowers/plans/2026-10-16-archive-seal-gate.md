@@ -1236,11 +1236,40 @@ test('入链数只算活跃笔记，归档笔记的出站链接不计，且按�
   const root = scaffold({
     'implemented/feature/2026-01-01-target.md': body(),
     'implemented/feature/2026-01-02-src.md': body('见 [目标](../feature/2026-01-01-target.md) 与 [目标2](../feature/2026-01-01-target.md)。'),
-    'archived/feature/2026-01-03-old.md': '# Agent Note: o\n\nStatus: implemented\nArchived: 2026-01-04\n\n见 [目标](../implemented/feature/2026-01-01-target.md)。\n',
+    'archived/feature/2026-01-03-old.md': '# Agent Note: o\n\nStatus: implemented\nArchived: 2026-01-04\n\n见 [目标](../../implemented/feature/2026-01-01-target.md)。\n',
   })
   const { stdout } = run(root)
   const line = stdout.split('\n').find(l => l.includes('2026-01-01-target.md')) ?? ''
   assert.match(line, /1入链/, `同一篇链两次算一篇：${line}`)
+  rmSync(root, { recursive: true, force: true })
+})
+
+// 上一条用例的归档链接若写成 `../implemented/…`，从 archived/feature/ 出发会解析到不存在的
+// archived/implemented/… —— 那时它只钉住「按来源去重」，钉不住「归档出站链接不计」。以下两条补上。
+test('归档笔记指向活跃笔记且链接可解析时，仍不计入入链', () => {
+  const root = scaffold({
+    'implemented/feature/2026-01-01-target.md': body(),
+    'archived/feature/2026-01-03-old.md':
+      '# Agent Note: o\n\nStatus: implemented\nArchived: 2026-01-04\n\n见 [目标](../../implemented/feature/2026-01-01-target.md)。\n',
+  })
+  const { stdout } = run(root)
+  const line = stdout.split('\n').find(l => l.includes('2026-01-01-target.md')) ?? ''
+  assert.match(line, /0入链/, `归档笔记的出站链接不该计入：${line}`)
+  rmSync(root, { recursive: true, force: true })
+})
+
+test('自链接不计入自己的入链，断链也不会造成误计', () => {
+  const root = scaffold({
+    'implemented/feature/2026-01-01-self.md': body(
+      '见 [自己](2026-01-01-self.md) 与 [自己](./2026-01-01-self.md)，还有 [断链](missing.md)。',
+    ),
+    'implemented/feature/2026-01-02-other.md': body('见 [那篇](2026-01-01-self.md)。'),
+  })
+  const { stdout } = run(root)
+  const selfLine = stdout.split('\n').find(l => l.includes('2026-01-01-self.md')) ?? ''
+  const otherLine = stdout.split('\n').find(l => l.includes('2026-01-02-other.md')) ?? ''
+  assert.match(selfLine, /1入链/, `自链接不该算进自己：${selfLine}`)
+  assert.match(otherLine, /0入链/, `断链不该造成误计：${otherLine}`)
   rmSync(root, { recursive: true, force: true })
 })
 
